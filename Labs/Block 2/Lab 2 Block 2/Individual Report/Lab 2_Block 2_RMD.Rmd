@@ -1,0 +1,653 @@
+---
+title: "Lab 2 Block 2"
+author: "Ahmed Alhasan"
+date: "12/13/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Assignment 1. Using GAM and GLM to examine the mortality rates
+
+&nbsp; 
+
+```{r include=FALSE}
+setwd('E:/Workshop/Machine Learning/Block 2/Lab 2 Block 2')
+suppressWarnings(RNGversion('3.5.1'))
+
+library(readxl)
+library(ggplot2)
+library(mgcv)
+```
+
+### 1.1 Relation between Influenza & Mortality
+```{r echo=FALSE, fig.align='center', fig.height=4, fig.width=12}
+flu <- read_excel("Data/influenza.xlsx")
+
+ggplot(flu)+
+  geom_line(aes(x = Time, y = Mortality, color = "Mortality")) +
+  geom_line(aes(x = Time, y = Influenza, color = "Influenza")) +
+  scale_color_manual("Legend", 
+                     breaks = c("Mortality", "Influenza"), 
+                     values = c("#00E6AC", "#FF3366"))+
+  theme_minimal()
+```
+
+- Since high Mortality rates correspond with high number of Influenza outbreaks, it indicates there is a relationship between Influenza and Mortality.
+
+- This relationship is not necessarily a cause and effect relationship, it could either be that "Mortality is a direct of effect to Influenza outbreaks", and/or it could mean they are both direct effects of winter (the first and last weeks in the year).
+
+- It can be seen that the increase in the number of Influenza outbreaks every winter does not linearly correspond with the increase in Mortality rates(does not increase in the same ratio). One instance is that winter 95-96 happened to have the highest Mortality rate in the recorded period but the same can not be said about the number of Influenza outbreaks.
+
+
+&nbsp; 
+
+
+### 1.2 GAM model
+```{r echo=FALSE, fig.align='center', fig.height=8, fig.width=12}
+w <- length(unique(flu$Week))
+
+model <- gam(Mortality ~ Year + s(Week, k = w), 
+             data   = flu, 
+             family = "gaussian", 
+             method = "GCV.Cp") 
+```
+
+Probabilistic Model:
+$$y \sim N(\mu, \sigma^2) $$
+$$\hat{y} = -680.598 + 1.232846 \ (Year_i) + s_i(Week_k) + \epsilon_i$$  $$where \ i = 1,2,...,9 \ number \ of \ years, \ k = 1,2,...,52 \ number \ of \ weeks$$
+The resulting coefficients matrix will have 459 rows(i*k), k actually is less than 9 since last year is not fully recorded, and 52 columns (k).
+
+
+&nbsp; 
+
+### 1.3 Predicted vs Observed Mortality
+```{r echo=FALSE, fig.align='center', fig.height=4, fig.width=12}
+pred <- predict(model)
+
+df1 <- data.frame(Time = flu$Time, 
+                  Mortality  = flu$Mortality, 
+                  Prediction = pred,
+                  Influenza  = flu$Influenza,
+                  Residuals  = model$residuals)
+
+ggplot(df1)+
+  geom_line(aes(x = Time, y = Mortality, color = "Observed Mortality")) +
+  geom_line(aes(x = Time, y = Prediction, color = "Predicted Mortality")) +
+  scale_color_manual("Legend", 
+                     breaks = c("Observed Mortality", "Predicted Mortality"), 
+                     values = c("#FF3366", "#0071B3"))+
+  theme_minimal()
+```
+
+
+```{r echo=FALSE, fig.align='center', fig.height=6, fig.width=12}
+summary(model)
+plot(model, residuals = TRUE, cex = 2)
+```
+
+*Report which terms appear to be significant in the model* 
+
+- "Year" which is linearly linked to Mortality is insignificant variable and has a very slight contribution to the model. 
+
+- "Week" actually is very significant and it has non-linear relationship with Mortality.
+
+- k (52 basis dimensions) is set to the total number of weeks represents the knots between the splines, while the Effective Degrees of Freedom "edf" is 14.32 which is selected based on the penalty factor set by GCV.
+
+- The model explains 68.8% of the variance (almost all of this contribution is from the "Week" spline).
+
+*Is there a trend in mortality change from one year to another?* 
+
+- The actual values of Mortality change greatly within the same year and moderately between years.
+
+- The prediction however changes only within the year itself and the change between different years basically non-existent, this is due to the fact we took linear relationship with "Year" in our model which has intangible contribution to the model. This linearity might not well descripe the actual relationship with Mortality"
+
+*Interpret the spline plot?* 
+
+- The x-axis represent the weeks, and the y-axis represent the residual values. The line represent the relation betwen Mortality and Week and it is the highest in the first and last weeks (winter) and lowest in mid-year and the interval around it is the 95% confidence interval of the Expected value of the model. The dots represent the residuals.
+
+- From the plot we can see the spline fit well on one year average data.
+
+
+
+&nbsp; 
+
+### 1.4 Prediction with Different Penalty Factors
+```{r echo=FALSE, fig.align='center', fig.height=4, fig.width=12}
+low_model  <- gam(Mortality ~ Year + s(Week, k = w, sp=0.00001), 
+                  data   = flu, 
+                  family = "gaussian")
+low_pred   <- predict(low_model)
+
+summary(low_model)
+
+high_model <- gam(Mortality ~ Year + s(Week, k = w, sp=10000), 
+                  data   = flu, 
+                  family = "gaussian")
+high_pred  <- predict(high_model)
+
+summary(high_model)
+
+df2 <- data.frame(Time  = flu$Time, 
+                  Mortality = flu$Mortality, 
+                  pred1 = low_pred, 
+                  pred2 = high_pred)
+
+ggplot(df2, aes(x = Time))+
+  geom_line(aes(y = Mortality, colour="Actual Observations"))+
+  geom_line(aes(y = pred1, colour="Prediction with low penalty"))+
+  geom_line(aes(y = pred2, colour="Prediction with high penalty"))+
+  scale_colour_manual("Legend", 
+                      breaks = c("Actual Observations", "Prediction with low penalty", "Prediction with high penalty"),
+                      values = c("#FF3366","#0071B3","#00EEFF"))+
+  theme_minimal()
+```
+
+*Examine how the penalty factor influences the estimated deviance of the model?* 
+
+- Increasing the penalty factor make the model underfitted and reduced the accuracy of the model, therefore; the deviance explained by the model got reduced.
+
+```{r echo=FALSE, fig.align='center', fig.height=4, fig.width=12}
+par(mfrow = c(1,2))
+plot(low_model)
+plot(high_model)
+```
+
+- This Increase in penalty reduces the wiggliness of the spline until it becomes a straight line. And this line is repeated over the years, that's why it gives this zigzag shape in the time series plot.
+
+*What is the relation of the penalty factor to the degrees of freedom?* 
+
+- Increasing the penalty factor eliminates the insignificant basis dimentions until it reaches 1 which means "Week" is linearly related to Mortality.
+
+
+*Do your results confirm this relationship?* 
+
+- Yes, it is.
+
+
+### 1.5 Correlation between Residuals and Influenza
+```{r echo=FALSE, fig.align='center', fig.height=4, fig.width=12}
+ggplot(df1)+
+  geom_line(aes(x = Time, y = Influenza, color = "Influenza")) +
+  geom_line(aes(x = Time, y = Residuals, color = "Residuals")) +
+  scale_color_manual("Legend", 
+                     breaks = c("Influenza", "Residuals"), 
+                     values = c("#009A73", "#989898"))+
+  theme_minimal()
+```
+
+*Is the temporal pattern in the residuals correlated to the outbreaks of influenza?* 
+
+- The Influenza could explain some of the positive residuals (where the model in 1.2 underestimates the mortality), but it still can't explain the negative and some of the positive residuals. So there is some correlation between the two.
+
+&nbsp;
+
+### 1.6 Final Model 
+```{r echo=FALSE, fig.align='center', fig.height=4, fig.width=12, warning=FALSE}
+y <- length(unique(flu$Year))
+f <- length(unique(flu$Influenza))
+
+flu_model <- gam(Mortality ~ s(Year, k = y) + s(Week, k = w) + s(Influenza, k = f), 
+                 data   = flu, 
+                 family = "gaussian", 
+                 method = "GCV.Cp") 
+
+flu_pred  <- predict(flu_model)
+
+summary(flu_model)
+```
+
+```{r echo=FALSE, fig.align='center', fig.height=6, fig.width=12, warning=FALSE}
+par(mfrow=c(1,3))
+plot(flu_model, residuals = TRUE, cex = 2)
+```
+
+```{r echo=FALSE, fig.align='center', fig.height=4, fig.width=12, warning=FALSE}
+df3 <- data.frame(Time = flu$Time, 
+                  Mortality  = flu$Mortality, 
+                  Prediction = flu_pred,
+                  Influenza  = flu$Influenza,
+                  Residuals  = flu_model$residuals)
+
+ggplot(df3)+
+  geom_line(aes(x = Time, y = Mortality, color = "Observed Mortality")) +
+  geom_line(aes(x = Time, y = Prediction, color = "Predicted Mortality")) +
+  scale_color_manual("Legend", 
+                     breaks = c("Observed Mortality", "Predicted Mortality"), 
+                     values = c("#FF3366", "#0071B3"))+
+  theme_minimal()
+```
+
+*Conclude whether or not the mortality is influenced by the outbreaks of influenza.* 
+
+- Adding the Influenza to the model increased the accuracy considerably but that could be overfitting.
+
+- It can be concluded that outbreaks of influenza have some influence on mortality.
+
+
+\newpage
+
+## Assignment 2. High-dimensional methods
+
+### 2.1 Nearest Shrunken Centroid
+
+```{r include=FALSE}
+library(pamr)
+library(glmnet)
+library(kernlab)
+```
+
+```{r message=FALSE, include=FALSE}
+data <- read.csv2("Data/data.csv", check.names = FALSE)
+data$Conference <- as.factor(data$Conference)
+
+n     <- dim(data)[1]
+set.seed(12345)
+ind   <- sample(1:n, floor(n*0.7))
+train <- data[ind,]
+test  <- data[-ind,]
+ 
+#train
+rownames(train) <- 1:nrow(train)
+x_train         <- t(train[,-4703]) # remove dependent variable
+y_train         <- train[[4703]]    # vector of the dependent variable
+mytrain_data    <- list(x = x_train, 
+                        y = y_train, 
+                        geneid    = as.character(1:nrow(x_train)), 
+                        genenames = rownames(x_train))
+#test 
+rownames(test) <- 1:nrow(test)
+x_test         <- t(test[,-4703]) 
+y_test         <- test[[4703]]    
+
+
+cen_model   <- pamr.train(mytrain_data)
+
+set.seed(12345)
+cvmodel     <- pamr.cv(cen_model, mytrain_data)
+
+#print(cvmodel)  
+pamr.plotcv(cvmodel)
+```
+
+*Provide a centroid plot and interpret it.*
+
+```{r echo=FALSE}
+pamr.plotcen(cen_model, 
+             mytrain_data, 
+             threshold = cvmodel$threshold[which.min(cvmodel$error)])
+```
+
+- The plot shows only the features that play a role in classification, in this case (using set.seed(12345)) 862 features selected. This number is determined by C.V. based on the threshold that gave the least errors. The words with the longest pars at the top are the ones than can classify more correctly. Because the top words can only be seen in one of the two classes, we can see them exclusively either on the "1" side or the "0".
+
+
+```{r include=FALSE}
+features = pamr.listgenes(cen_model, 
+                   mytrain_data, 
+                   threshold = cvmodel$threshold[which.min(cvmodel$error)],
+                   genenames = TRUE)
+```
+
+*How many features were selected by the method?*
+```{r echo=FALSE}
+nrow(features)
+```
+
+
+*List the names of the 10 most contributing features*
+```{r echo=FALSE}
+as.matrix(features[1:10,2])
+```
+
+*comment whether it is reasonable that they have strong effect on the discrimination between the conference mails and other mails?*
+
+- The NSC algorithm select every feature that have effect on the classification depending on the threshold selected by the C.V. function, in this case the threshold is relatively low thats why a lot of the features have been selected even with minimum effect. 
+
+
+*Report the test error.*
+```{r echo=FALSE}
+#cat(paste(colnames(data)[as.numeric(features[,1])], collapse='\n'))
+# top10 <- as.matrix(colnames(data)[as.numeric(features[1:10,1])])
+# top10
+
+cen_pred <- pamr.predict(cen_model,
+                         newx = x_test,
+                         type = "class",
+                         threshold = cvmodel$threshold[which.min(cvmodel$error)]) 
+
+cen_mat   <- table(y_test, cen_pred)
+cen_rate  <- 1 - sum(diag(cen_mat)) / sum(cen_mat)
+cen_rate
+
+res1 <- list("Error Rate" = cen_rate, "Features Selected" = nrow(features))
+```
+&nbsp; 
+
+### 2.2 Comparision with Elastic Net & SVM
+```{r echo=FALSE, fig.align='center', fig.height=10, fig.width=12, warning=FALSE}
+set.seed(12345)
+elastic_cv <- cv.glmnet(x = t(x_train), 
+                        y = y_train, 
+                        family="binomial",
+                        alpha = 0.5)
+
+# par(mfrow = c(2,1))
+# plot(elastic_cv)
+# plot(elastic_cv$glmnet.fit)
+
+elastic_pred <- predict.cv.glmnet(elastic_cv, 
+                                  newx = t(x_test), 
+                                  s = elastic_cv$lambda.min,
+                                  type = "class", 
+                                  exact = TRUE)
+
+elastic_mat  <- table(y_test, elastic_pred)
+elastic_rate <- 1 - sum(diag(elastic_mat)) / sum(elastic_mat)
+
+coefs <-as.matrix(coef(elastic_cv, elastic_cv$lambda.min))
+elastic_features <- length(names(coefs[coefs != 0,])) 
+
+res2 <- list("Error Rate" = elastic_rate, "Features Selected" = elastic_features)
+
+
+invisible(capture.output(
+  svm <- ksvm(Conference ~ ., 
+            data = train, 
+            kernel="vanilladot",
+            scaled = FALSE)))
+
+
+svm_pred <- predict(svm, newdata = test)
+
+svm_mat  <- table(y_test, elastic_pred)
+svm_rate <- 1 - sum(diag(svm_mat)) / sum(svm_mat)
+
+res3 <- list("Error Rate" = svm_rate, "Features Selected" = svm@nSV)
+
+result <- rbind("NSC" = res1, "Elastic Net" = res2, "SVM" = res3)
+knitr::kable(result)
+```
+
+*Which model would you prefer and why?* 
+
+- The NSC gave the least error but used too many variables, and could have been a higher rate if set.seed was different. The Elastic Net and SVM perform very close to each other, however Elastic Net is more interpretable and preferable to the other two.
+
+### 2.3 Benjamini-Hochberg
+&nbsp; 
+
+*Which features correspond to the rejected hypotheses?*
+```{r echo=FALSE}
+hochberg <- function(x, y, alpha) {
+  p <- apply(x, 2, function(x_data){t.test(x_data ~ y, alternative = "two.sided")$p.value})
+
+  rank     <- as.matrix(sort(p))
+  l        <- length(p)
+  values   <- (1:l/l) * alpha
+  T_F      <- matrix(0,4702,1)
+  z        <- data.frame("P-Values" = rank,"T_F" = T_F)
+  
+  for(i in 1:4702){
+    if(rank[i] <= values[i]){
+      z[i,2] <- "Rejected"
+    }
+    else{z[i,2] <- "Accepted"}
+  }
+  lowest_p <- subset(z, T_F == "Rejected")
+  return(lowest_p)
+}
+
+lowest_p <- hochberg(x = data[,-4703], y = data[,4703], alpha=0.05)
+
+lowest_p
+```
+
+*Interpret the result.* 
+
+- The list of words selected by Benjamini-Hochberg method emphisize on lowering the false-discovery rate, meaning these words are the ones that give the least False Positive errors.
+
+
+### Appendix
+```{r echo=TRUE, eval=FALSE}
+setwd('E:/Workshop/Machine Learning/Block 2/Lab 2 Block 2')
+suppressWarnings(RNGversion('3.5.1'))
+
+library(readxl)
+library(ggplot2)
+library(mgcv)
+
+flu <- read_excel("Data/influenza.xlsx")
+
+ggplot(flu)+
+  geom_line(aes(x = Time, y = Mortality, color = "Mortality")) +
+  geom_line(aes(x = Time, y = Influenza, color = "Influenza")) +
+  scale_color_manual("Legend", 
+                     breaks = c("Mortality", "Influenza"), 
+                     values = c("#00E6AC", "#FF3366"))+
+  theme_minimal()
+
+w <- length(unique(flu$Week))
+
+model <- gam(Mortality ~ Year + s(Week, k = w), 
+             data   = flu, 
+             family = "gaussian", 
+             method = "GCV.Cp") 
+
+pred <- predict(model)
+
+df1 <- data.frame(Time = flu$Time, 
+                  Mortality  = flu$Mortality, 
+                  Prediction = pred,
+                  Influenza  = flu$Influenza,
+                  Residuals  = model$residuals)
+
+ggplot(df1)+
+  geom_line(aes(x = Time, y = Mortality, color = "Observed Mortality")) +
+  geom_line(aes(x = Time, y = Prediction, color = "Predicted Mortality")) +
+  scale_color_manual("Legend", 
+                     breaks = c("Observed Mortality", "Predicted Mortality"), 
+                     values = c("#FF3366", "#0071B3"))+
+  theme_minimal()
+
+summary(model)
+plot(model, residuals = TRUE, cex = 2)
+
+low_model  <- gam(Mortality ~ Year + s(Week, k = w, sp=0.00001), 
+                  data   = flu, 
+                  family = "gaussian")
+low_pred   <- predict(low_model)
+
+summary(low_model)
+
+high_model <- gam(Mortality ~ Year + s(Week, k = w, sp=10000), 
+                  data   = flu, 
+                  family = "gaussian")
+high_pred  <- predict(high_model)
+
+summary(high_model)
+
+df2 <- data.frame(Time  = flu$Time, 
+                  Mortality = flu$Mortality, 
+                  pred1 = low_pred, 
+                  pred2 = high_pred)
+
+ggplot(df2, aes(x = Time))+
+  geom_line(aes(y = Mortality, colour="Actual Observations"))+
+  geom_line(aes(y = pred1, colour="Prediction with low penalty"))+
+  geom_line(aes(y = pred2, colour="Prediction with high penalty"))+
+  scale_colour_manual("Legend", 
+                      breaks = c("Actual Observations", "Prediction with low penalty", "Prediction with high penalty"),
+                      values = c("#FF3366","#0071B3","#00EEFF"))+
+  theme_minimal()
+
+par(mfrow = c(1,2))
+plot(low_model)
+plot(high_model)
+
+ggplot(df1)+
+  geom_line(aes(x = Time, y = Influenza, color = "Influenza")) +
+  geom_line(aes(x = Time, y = Residuals, color = "Residuals")) +
+  scale_color_manual("Legend", 
+                     breaks = c("Influenza", "Residuals"), 
+                     values = c("#009A73", "#989898"))+
+  theme_minimal()
+
+y <- length(unique(flu$Year))
+f <- length(unique(flu$Influenza))
+
+flu_model <- gam(Mortality ~ s(Year, k = y) + s(Week, k = w) + s(Influenza, k = f), 
+                 data   = flu, 
+                 family = "gaussian", 
+                 method = "GCV.Cp") 
+
+flu_pred  <- predict(flu_model)
+
+summary(flu_model)
+
+par(mfrow=c(1,3))
+plot(flu_model, residuals = TRUE, cex = 2)
+
+df3 <- data.frame(Time = flu$Time, 
+                  Mortality  = flu$Mortality, 
+                  Prediction = flu_pred,
+                  Influenza  = flu$Influenza,
+                  Residuals  = flu_model$residuals)
+
+ggplot(df3)+
+  geom_line(aes(x = Time, y = Mortality, color = "Observed Mortality")) +
+  geom_line(aes(x = Time, y = Prediction, color = "Predicted Mortality")) +
+  scale_color_manual("Legend", 
+                     breaks = c("Observed Mortality", "Predicted Mortality"), 
+                     values = c("#FF3366", "#0071B3"))+
+  theme_minimal()
+
+library(pamr)
+library(glmnet)
+library(kernlab)
+
+data <- read.csv2("Data/data.csv", check.names = FALSE)
+data$Conference <- as.factor(data$Conference)
+
+n     <- dim(data)[1]
+set.seed(12345)
+ind   <- sample(1:n, floor(n*0.7))
+train <- data[ind,]
+test  <- data[-ind,]
+ 
+#train
+rownames(train) <- 1:nrow(train)
+x_train         <- t(train[,-4703]) # remove dependent variable
+y_train         <- train[[4703]]    # vector of the dependent variable
+mytrain_data    <- list(x = x_train, 
+                        y = y_train, 
+                        geneid    = as.character(1:nrow(x_train)), 
+                        genenames = rownames(x_train))
+#test 
+rownames(test) <- 1:nrow(test)
+x_test         <- t(test[,-4703]) 
+y_test         <- test[[4703]]    
+
+
+cen_model   <- pamr.train(mytrain_data)
+
+set.seed(12345)
+cvmodel     <- pamr.cv(cen_model, mytrain_data)
+
+#print(cvmodel)  
+pamr.plotcv(cvmodel)
+
+pamr.plotcen(cen_model, 
+             mytrain_data, 
+             threshold = cvmodel$threshold[which.min(cvmodel$error)])
+
+features = pamr.listgenes(cen_model, 
+                   mytrain_data, 
+                   threshold = cvmodel$threshold[which.min(cvmodel$error)],
+                   genenames = TRUE)
+
+nrow(features)
+
+as.matrix(features[1:10,2])
+
+#cat(paste(colnames(data)[as.numeric(features[,1])], collapse='\n'))
+# top10 <- as.matrix(colnames(data)[as.numeric(features[1:10,1])])
+# top10
+
+cen_pred <- pamr.predict(cen_model,
+                         newx = x_test,
+                         type = "class",
+                         threshold = cvmodel$threshold[which.min(cvmodel$error)]) 
+
+cen_mat   <- table(y_test, cen_pred)
+cen_rate  <- 1 - sum(diag(cen_mat)) / sum(cen_mat)
+cen_rate
+
+res1 <- list("Error Rate" = cen_rate, "Features Selected" = nrow(features))
+
+set.seed(12345)
+elastic_cv <- cv.glmnet(x = t(x_train), 
+                        y = y_train, 
+                        family="binomial",
+                        alpha = 0.5)
+
+# par(mfrow = c(2,1))
+# plot(elastic_cv)
+# plot(elastic_cv$glmnet.fit)
+
+elastic_pred <- predict.cv.glmnet(elastic_cv, 
+                                  newx = t(x_test), 
+                                  s = elastic_cv$lambda.min,
+                                  type = "class", 
+                                  exact = TRUE)
+
+elastic_mat  <- table(y_test, elastic_pred)
+elastic_rate <- 1 - sum(diag(elastic_mat)) / sum(elastic_mat)
+
+coefs <-as.matrix(coef(elastic_cv, elastic_cv$lambda.min))
+elastic_features <- length(names(coefs[coefs != 0,])) 
+
+res2 <- list("Error Rate" = elastic_rate, "Features Selected" = elastic_features)
+
+
+invisible(capture.output(
+  svm <- ksvm(Conference ~ ., 
+            data = train, 
+            kernel="vanilladot",
+            scaled = FALSE)))
+
+
+svm_pred <- predict(svm, newdata = test)
+
+svm_mat  <- table(y_test, elastic_pred)
+svm_rate <- 1 - sum(diag(svm_mat)) / sum(svm_mat)
+
+res3 <- list("Error Rate" = svm_rate, "Features Selected" = svm@nSV)
+
+result <- rbind("NSC" = res1, "Elastic Net" = res2, "SVM" = res3)
+knitr::kable(result)
+
+hochberg <- function(x, y, alpha) {
+  p <- apply(x, 2, function(x_data){t.test(x_data ~ y, alternative = "two.sided")$p.value})
+
+  rank     <- as.matrix(sort(p))
+  l        <- length(p)
+  values   <- (1:l/l) * alpha
+  T_F      <- matrix(0,4702,1)
+  z        <- data.frame("P-Values" = rank,"T_F" = T_F)
+  
+  for(i in 1:4702){
+    if(rank[i] <= values[i]){
+      z[i,2] <- "Rejected"
+    }
+    else{z[i,2] <- "Accepted"}
+  }
+  lowest_p <- subset(z, T_F == "Rejected")
+  return(lowest_p)
+}
+
+lowest_p <- hochberg(x = data[,-4703], y = data[,4703], alpha=0.05)
+
+lowest_p
+```
+

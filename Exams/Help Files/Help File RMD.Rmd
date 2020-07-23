@@ -1,0 +1,2733 @@
+---
+title: "Exam Assistant"
+author: "Ahmed Alhasan"
+date: "01/16/2020"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align = "center", fig.height = 3.5, warning = FALSE, message = FALSE)
+suppressWarnings(RNGversion('3.5.1'))
+```
+# Lab 1 Block 1 
+
+## Assignment 1.Spam classification with nearest neighbors
+
+### 1.1 Importing the Data.
+*Import the data into R and divide it into training and test sets (50%/50%)*
+```{r}
+spambase = read.csv("Data/spambase.csv", header = TRUE)
+
+n=dim(spambase)[1]
+set.seed(12345)
+id=sample(1:n, floor(n*0.5))
+train=spambase[id,]
+test=spambase[-id,]
+```
+
+### 1.2 Classify with Logistic Regression by using 0.5 as a threshold.
+
+*Use logistic regression (functions glm(), predict()) to classify the training and test data by the classification principle:*
+$$\hat{Y} = 1 \; if \ p(Y = 1|X) > 0.5, \; otherwise \;  \hat{Y} = 0$$
+```{r}
+logistic <- function(data, p) {
+
+  model <- glm(as.factor(Spam) ~.,family=binomial, data=train)
+
+  # type "response" is used to give the probabilities instead of log-odds
+  predicted  <- predict(model, data, type = 'response')
+  classified <- ifelse(predicted > p,1,0)
+
+  con_matrix <- table(Actual = data$Spam, Predicted = classified)
+  colnames(con_matrix) <- c("No Spam", "Spam")
+  rownames(con_matrix) <- c("No Spam", "Spam")
+
+  miss_rate  <- 1- sum(diag(con_matrix))/sum(con_matrix)
+
+  result = list("Confusion Matrix" = con_matrix, "Missclassification Rate" = miss_rate)
+  return(result)
+}
+```
+
+\newpage
+
+*Report the confusion matrices (use table()) and the misclassification rates for training and test data* 
+```{r}
+logistic(train, 0.5)
+logistic(test, 0.5)
+```
+
+*Analyse the obtained results.*
+
+- The missclassification rate for the training set is a little less because of overfitting, the model already have seen the train data and it should not have been tested with it.
+
+- False-Positive Rate, $\frac{FP}{FP+TN}$ (classified as spam where it actually not) is about 15.58% (146/937) and True-Positive Rate $\frac{TP}{TP+FN}$ = 77.60% (336/433), which could be considered as bad rates in the case of a spam filter because we might filter out important emails as spam.
+
+&nbsp; 
+
+### 1.3 Classify with Logistic Regression by using 0.8 as a threshold. 
+*Use logistic regression (functions glm(), predict()) to classify the training and test data by the classification principle:*
+$$\hat{Y} = 1 \; if \ p(Y = 1|X) > 0.8, \; otherwise \;  \hat{Y} = 0$$
+*Report the confusion matrices (use table()) and the misclassification rates for training and test data* 
+```{r}
+logistic(train, 0.8)
+logistic(test, 0.8)
+```
+
+*Compare the results. What effect did the new rule have?* 
+
+- Missclassification rate has increased when 0.8 threshold been used, this dramatically decreased the False-Postive and increased the False-Negative, meaning the model now is less predictive and more foregiving towards spam but much less normal emails get filtered as spam.
+
+
+&nbsp;
+
+### 1.4 Using K-Nearest Neighbours with k = 30
+
+*Use standard classifier kknn() with K=30 from package kknn.*
+```{r echo=TRUE, message=FALSE}
+library(kknn)
+```
+
+
+```{r}
+
+knn <- function(data, k){
+  
+  classified <- kknn(formula = as.factor(Spam) ~ ., 
+                     train = train, 
+                     test = data,
+                     k = k)
+  
+  con_matrix <- table(Actual = data$Spam, Predicted = classified$fitted.values)
+  colnames(con_matrix) <- c("No Spam", "Spam")
+  rownames(con_matrix) <- c("No Spam", "Spam")
+  
+  miss_rate <- 1- sum(diag(con_matrix))/sum(con_matrix)
+  
+  result = list("Confusion Matrix" = con_matrix,
+                "Missclassification Rate" = miss_rate)
+  return(result)
+}
+```
+
+*Report the the misclassification rates for the training and test data*
+
+```{r}
+knn(train, 30)
+knn(test, 30)
+```
+
+*Compare the results with step 2.*
+
+- With 32.9% miss_rate on the test dataset the k-nearest neighbor perform much worse than the 17.7% miss_rate from the logistic regression.
+
+- There is understandable big gap in the miss_rate between the train and test datasets because the model was trained on the train data and have seen it.
+
+- False-Positive Rate and True-Positive Rate seems to be much worse than the ones obtained from logistic regression.
+
+&nbsp;
+
+### 1.5 Using K-Nearest Neighbours with k = 1
+
+*Repeat step 4 for K=1*
+```{r}
+knn(train, 1)
+knn(test, 1)
+```
+
+\newpage
+
+*Compare the results with step 4. What effect does the decrease of K lead to and why?* 
+
+- Reducing k to 1 on the training dataset will always make 0% missclassification rate because nearest neighbor will be the point itself, and the model will predict the exact points that it was trained on.
+
+- Using k=1 on the testing dataset has increased the miss_rate to about 36%, this is because of extreme overfitting where every point from the trainging dataset have very small area that doesnt allow much predictiblity for the unseen testing dataset.
+
+&nbsp; 
+
+## Assignment 2. Inference about lifetime of machines
+
+### 2.1 Import the data to R
+```{r}
+library(readxl)
+machines <- read_excel("Data/machines.xlsx")
+```
+
+
+### 2.2 Compute the log-likelihood
+
+*What is the distribution type of x?*
+
+- x is exponentially distributed.
+
+
+*Write a function that computes the log-likelihood $log \ p(x|\theta)$ for a given $\theta$ and a given data vector x*
+```{r}
+log_like <- function(l, theta) {
+  sum(log(theta * exp(-theta * l)))
+}
+
+thetas <- seq(0, 5, by = 0.1)
+logs   <- sapply(thetas, function(x) {sum(log_like(l = machines$Length, theta = x))})
+```
+
+
+*Plot the curve showing the dependence of log-likelihood on $\theta$ where the entire data is used for fitting.*
+```{r}
+plot(thetas, 
+     logs, 
+     main = "Log-Likelihood", 
+     col  = "red",
+     xlab = "Theta", 
+     ylab = "Log-Likelihood", 
+     type = "p",
+     lwd  = ifelse(thetas == thetas[which.max(logs)],3, 1),
+     cex  = ifelse(thetas == thetas[which.max(logs)],1.5, 1),
+     ylim = c(-150,0))
+```
+
+*What is the maximum likelihood value of $\theta$ according to the plot?*
+```{r}
+thetas[which.max(logs)]
+```
+
+
+### 2.3 Using 6 Observations
+
+*Repeat step 2 but use only 6 first observations from the data*
+```{r}
+set.seed(12345)
+sample <- sample(x = machines$Length, size = 6)
+sample_logs <- sapply(thetas, function(x) {sum(log_like(l = sample, theta = x))})
+```
+
+*Put the two log-likelihood curves (from step 2 and 3) in the same plot.*
+```{r}
+plot(thetas, 
+     logs, 
+     col = "red",
+     main = "Log-Likelihood", 
+     xlab = "Theta", 
+     ylab = "Log-Likelihood",
+     type = "p", 
+     lwd  = 1, 
+     ylim = c(-150,0))
+points(thetas, 
+       sample_logs, 
+       col = "blue", 
+       lwd = 1)
+```
+
+*What can you say about reliability of the maximum likelihood solution in each case?* 
+
+- Because MLE is dependent on the number of observations, 6 observations give less reliable estimate of theta than using the whole sample.
+
+### 2.4 Bayesian model
+
+*Assume now a Bayesian model with $p(x|\theta) = \theta e^{-\theta x}$ and a prior $p(\theta) = \lambda e^{-\lambda \theta}$.* 
+
+*Write a function computing $l(\theta) = log \ (p(x|\theta) \ p(\theta))$*
+```{r}
+# prior <- function(theta) {
+#   lambda <- 10
+#   lambda * exp(-lambda * theta)
+# }
+# 
+# posteriors <- sapply(1:length(thetas), function(x) {logs[x] + log(prior(thetas[x]))})
+
+
+posterior <- function(theta, x){
+  lambda <- 10
+  prior <- log(lambda * exp(-lambda * thetas))
+
+  posteriors <- prior + logs
+  return((posteriors))
+}
+posteriors <- posterior(thetas, machines$Length)
+
+```
+
+*What kind of measure is actually computed by this function?* 
+
+- It measures the value which maximises the posterior probability, and because it is constrained by the added weight of the prior it has lower values.
+
+\newpage
+
+
+*Plot the curve showing the dependence of $l(\theta)$ on $\theta$ computed using the entire data and overlay it with a plot from step 2.*
+```{r}
+plot(thetas, 
+     posteriors, 
+     col  = "green",
+     main = "Log-Posterior", 
+     xlab = "Theta", 
+     ylab = "Log-Posterior",
+     type = "p", 
+     lwd  = ifelse(thetas == thetas[which.max(posteriors)],3, 1),
+     cex  = ifelse(thetas == thetas[which.max(posteriors)],1.5, 1),
+     ylim = c(-150,0))
+points(thetas, 
+       logs, 
+       col = "red", 
+       lwd = ifelse(thetas == thetas[which.max(logs)],3, 1),
+       cex = ifelse(thetas == thetas[which.max(logs)],1.5, 1))
+```
+
+*Find an optimal $\theta$*
+```{r}
+thetas[which.max(posteriors)]
+```
+
+*Compare your result with the previous findings. *
+
+- Because the bayesian model is more conservative (by the added weight of the prior) it is not prone to overfitting like maximum likehood which always favours the parameters that gives the best fit for the model, which results in overfitted models that does not generalize.
+
+### 2.5 Generate New Observations
+
+*Use $\theta$ value found in step 2 and generate 50 new observations from $p(x|\theta) = \theta e^{-\theta x}$ (use standard random number generators).*
+```{r}
+max_theta <- thetas[which.max(logs)]
+
+set.seed(12345)
+new_obs <- rexp(50, max_theta)
+```
+
+*Create the histograms of the original and the new data.*
+```{r}
+par(mfrow=c(1, 2))
+hist(new_obs, 
+     breaks = 10, 
+     main   = "Generated Data",
+     xlab   = "Lifetime", 
+     ylab   = "Frequency", 
+     xlim   = c(0, 5), 
+     col    = "green",
+     ylim   = c(0,25))
+
+hist(machines$Length, 
+     breaks = 10, 
+     main   = "Original Data",
+     xlab   = "Lifetime", 
+     ylab   = "Frequency", 
+     col    = "red",
+     xlim   = c(0,5),
+     ylim   = c(0,25))
+```
+
+*Make conclusions.* 
+
+- The distribution of the generated data is similar to the original data, it proves that the assumption about the data is exponentially distributed was correct.
+
+&nbsp;
+
+## Assignment 3. Feature selection by cross-validation in a linear model.
+
+```{r}
+mylin=function(X,Y, Xpred){
+  Xpred1=cbind(1,Xpred)
+  X= cbind(1,X)
+  beta <- (solve(t(X)%*%X))%*%(t(X)%*%Y)
+  Res=Xpred1%*%beta
+  return(Res)
+}
+
+myCV=function(X,Y,Nfolds){
+  n=length(Y)
+  p=ncol(X)
+  set.seed(12345)
+  ind=sample(n,n)       # Shuffle
+  X1=X[ind,]            # New X after shuffle
+  Y1=Y[ind]             # New Y after shuffle
+  sF=floor(n/Nfolds)    # Fold size
+  MSE=numeric(2^p-1)
+  Nfeat=numeric(2^p-1)
+  Features=list()
+  curr=0
+  
+  #we assume 5 features.
+  
+  for (f1 in 0:1)
+    for (f2 in 0:1)
+      for(f3 in 0:1)
+        for(f4 in 0:1)
+          for(f5 in 0:1){
+            model= c(f1,f2,f3,f4,f5)                # Selected Features
+            if (sum(model)==0) next()               # Skips the first iteration 
+            SSE=0
+            selected_feature <- which(model == 1)
+            for (k in 1:Nfolds){
+              breaks <- seq(1,n,sF)
+              folds <- ind[breaks[k]:breaks[k+1]-1]
+              
+              Xtrain <- X1[-folds,selected_feature]
+              Xpred  <- X1[folds,selected_feature]
+              Ytrain <- Y1[-folds]
+              Ypred  <- Y1[folds]
+              
+              Yp <- mylin(Xtrain,Ytrain,Xpred)
+              SSE=SSE+sum((Ypred-Yp)^2)
+            }
+            curr=curr+1
+            MSE[curr]=SSE/n
+            Nfeat[curr]=sum(model)
+            Features[[curr]]=model
+          }
+
+  i=which.min(MSE)
+  plot(Nfeat, 
+       MSE, 
+       col  = ifelse(MSE == MSE[i], "red", "blue"),
+       xlab = "Number of features", 
+       ylab = "MSE")
+  
+  return(list(CV=MSE[i], Features=Features[[i]]))
+}
+
+data("swiss")
+myCV(as.matrix(swiss[,2:6]), swiss[[1]], 5)
+```
+
+- From the plot the cross-validation shows that accuracy of prediction is increasing with the number of features and the error at its minimum when 4 features are selected (Agriculture, Education, Catholic & Infant.Mortality), using all 5 features is a little worse but  closely accurate, probably using more than 4 features start to show overfitting.
+st MSE, since Examination is more correlated (negative correlation) with Fertility than Agriculture or Infant.Mortality.
+
+
+&nbsp;
+
+
+## Assignment 4. Linear regression and regularization
+
+```{r echo=TRUE}
+library(ggplot2)
+library(ggExtra)
+```
+
+
+```{r}
+tecator <- read.csv("Data/tecator.csv", header = TRUE)
+
+ggplot(tecator, aes(x = Protein, y = Moisture)) +
+     geom_point(alpha = 0.5, color = 'red', size = 1) +
+     geom_smooth(method = "lm", color = "blue") +
+     theme_minimal()
+
+```
+
+- Yes, there is a clear linear relationship between Moisture and Protein.
+
+
+&nbsp;
+
+
+- Probabilistic model : $$p (M|x,\beta,\sigma) = \mathcal{N} (\beta_{0} + \beta_{1}x), \sigma^{2})$$  
+
+- Since the error is normally distributed, then the likelihood function is given by:
+
+\begin{verbatim}
+p(M|x,\beta,\sigma) = \prod_{n=1}^{N} \mathcal{N}(\beta_{0} + \beta_{1}x), \sigma^{2})
+\end{verbatim}
+
+$$p(M|x,\beta,\sigma) = \prod_{n=1}^{N} \mathcal{N}(\beta_{0} + \beta_{1}x), \sigma^{2})$$  
+Taking the log likelyhood we get:
+\begin{verbatim}
+ln(M|x,\beta,\sigma) = -\frac{1}{2\sigma^{2}} \sum_{n=1}^{N}(y_n-\hat{y}_n)^2 + \frac{N}{2}ln \ 
+\sigma^2 - \frac{N}{2}ln \ (2\pi)  
+\end{verbatim}
+$$ln(M|x,\beta,\sigma) = -\frac{1}{2\sigma^{2}} \sum_{n=1}^{N}(y_n-\hat{y}_n)^2 + \frac{N}{2}ln \ \sigma^2 - \frac{N}{2}ln \ (2\pi)$$ 
+\begin{verbatim}
+\mathcal{W}here \ \hat{y} = \beta_{0} + \beta_{1}x 
+\end{verbatim}
+$$\mathcal{W}here \ \hat{y} = \beta_{0} + \beta_{1}x$$
+Maximizing in respect to $\beta$ we can omit the last two terms on the right-hand side of the equation because they do not depend on $\beta$
+
+Therefore; by minimizing the least square error we maximize the log likelihood.
+
+&nbsp;
+
+```{r}
+n=dim(tecator)[1]
+set.seed(12345)
+id=sample(1:n, floor(n*0.5))
+train=tecator[id,]
+test=tecator[-id,]
+
+M <- function(data,power) {
+  MSE <- matrix(0,power,1)
+  
+  for (i in 1:power) {
+    model <- lm(Moisture ~ poly(Protein,i), data = train)
+    pred  <- predict(model, data)
+    MSE[i,] <- mean((data$Moisture - pred)^2)
+    }
+
+  return(MSE)
+}
+train_MSE <- M(train,6)
+test_MSE  <- M(test,6)
+
+
+df = data.frame(train_MSE,test_MSE)
+
+round(df,2)
+
+ggplot(df) + 
+  geom_line(aes(x = 1:6, y = train_MSE, color = "Train MSE"), size = 1) +
+  geom_line(aes(x = 1:6, y = test_MSE, color = "Test MSE"), size = 1) + 
+  ylab("MSE") + 
+  xlab("Model complexity") +
+  theme_minimal()
+```
+
+
+
+- The model with i = 1 "linear with x" is the best model because it have the lease test error and the most simple.
+
+- MSE values always decrease when increasing the complexity of the model and testing it with the training data set because overfitting and using train data as test data.
+
+- Because $MSE = Var(\hat{y}) + [Bias(\hat{y})]^2 + Var(\epsilon)$ and because that variance is inherently a nonnegative
+quantity, and squared bias is also nonnegative. Hence, we see that the expected test MSE can never lie below $Var(\epsilon)$, the irreducible error. Therefore, bias & variance are competetive meaning if it bias minimized variance will increase and vice versa. 
+
+
+&nbsp;
+
+```{r echo=TRUE}
+library(glmnet)
+library(MASS)
+```
+
+
+```{r}
+#Using stepAIC on all data
+channels_all_data   <- tecator[,2:101] 
+Fat_model_all_data  <- lm(tecator$Fat ~ ., channels_all_data)
+best_fit_all_data   <- stepAIC(Fat_model_all_data, trace=FALSE)
+
+as.matrix(c("Selected Channels"= length(best_fit_all_data$coefficients)))
+
+```
+
+
+
+- When all data is used 64 channels where selected as the best model to predict Fat. stepAIC, 
+
+- A backward step wise selection (default) starts with the most complicated model (a model with all the 100 variables) and drops the least useful predictors 
+
+- The model with the minimum SSE is selected (the one with 64 channels in this case), however this might not be the ideal model because how stepAIC works it could drop a variable in the begining that could be part of the ideal model.
+
+
+```{r}
+ridge <- glmnet(x = as.matrix(tecator[,2:101]), 
+                y = as.matrix(tecator$Fat), 
+                alpha = 0, 
+                family = "gaussian")
+
+plot(ridge, xvar="lambda", label=TRUE)
+```
+
+- Lambda adds a penalty to the coefficients "excpet $\beta_0$", so the higher lambda is, the least significant variables will get close to 0.
+
+
+```{r}
+lasso <- glmnet(x = as.matrix(tecator[,2:101]), 
+                y = as.matrix(tecator$Fat), 
+                alpha = 1, 
+                family = "gaussian")
+
+plot(lasso, xvar="lambda", label=TRUE)
+```
+
+
+
+- With Lasso, the least correlated variables will get eliminated completely (set to 0), until lambda reaches a value where all coefficients are eliminated except for the intercept. In this case, from the 100 variables (channels) we started with, channel# 41 was the last to get eliminated.
+
+&nbsp;
+
+```{r}
+set.seed(12345)
+lasso_cv         <- cv.glmnet(x = as.matrix(tecator[,2:101]), 
+                        y = as.matrix(tecator$Fat), 
+                        alpha=1, 
+                        family="gaussian",
+                        lambda = 0:100 * 0.001) 
+
+# y=test[,7] #response
+# ynew <- predict(model, newx=as.matrix(test[, 1:6]), type="response")
+#Coefficient of determination
+# sum((ynew-mean(y))^2)/sum((y-mean(y))^2)
+# sum((ynew-y)^2)
+
+
+plot(lasso_cv)
+as.matrix(c("Minimum Lambda" = lasso_cv$lambda.min))
+as.matrix(c("1se Lambda" = lasso_cv$lambda.1se))
+```
+
+- 0 is the minimum lambda that gives the minimum mean cross-validated error(for this particular C.V.). Which is normal linear regression without penalty.
+
+- All the 100 variables have been selected with the minimum lambda, and as log of lambda grows larger the MSE also increases, however by taking the lambda within one standard error of the minimum, only 18 variables will be selected, which is much less than what was selected by stepAIC in step 4.
+
+\newpage
+
+
+# Lab 2 Block 1
+
+## Assignment 1. LDA and logistic regression
+
+### 1.1 plausibility of Linear Discriminant Analysis
+*Use australian-crabs.csv and make a scatterplot of carapace length (CL) versus rear width (RW) where observations are colored by Sex.*
+```{r out.width="80%"}
+crabs <- read.csv2("Data/australian-crabs.csv" ,sep = ",",dec=".")
+
+ggplot(crabs, aes(x = CL, y = RW))+ 
+  geom_point(aes(color = sex), 
+             size  = 1.5, 
+             alpha = 0.8 )+
+  scale_color_manual(values = c('#00CCFF', '#FF3366'))+
+  labs(title  = "Australian crabs",
+       x      = "CL", 
+       y      = "RW", 
+       colour = "Sex")+
+  theme_minimal()
+```
+
+*Do you think that this data is easy to classify by linear discriminant analysis? Motivate your answer.*
+
+- LDA assumes conditional Normal distribution for the variables (conditional on sex in this case) and equal covariance matrices, in this case the covariance matrices are not equal per class.
+
+&nbsp;
+
+### 1.2 LDA 
+
+*Make LDA analysis with target Sex and features CL and RW and proportional prior by using lda() function in package MASS.*
+```{r}
+library("MASS")
+model1    <- lda(sex ~ CL+RW, data = crabs)
+pred1     <- predict(model1, data = crabs)
+```
+
+*Make a scatter plot of CL versus RW colored by the predicted Sex and compare it with the plot in step 1.*
+```{r out.width="80%"}
+ggplot(crabs, aes(x = CL, y = RW))+ 
+  geom_point(aes(color = c("female", "male")[pred1$class]), 
+             size  = 1.5, 
+             alpha = 0.8 )+
+  scale_color_manual(values = c('#00CCFF', '#FF3366'))+
+  labs(title  = "Classified by LDA",
+       x      = "CL", 
+       y      = "RW", 
+       colour = "Sex")+
+  theme_minimal()
+
+# library("klaR")
+# partimat(sex ~ CL+RW, crabs, method = "lda")
+```
+
+*Compute the misclassification error.*
+```{r}
+con_mat1   <- table("Actuals" = crabs$sex, "Predictions" = pred1$class)   
+miss_rate1 <- 1 - sum(diag(con_mat1)) / sum(con_mat1)
+con_mat1
+miss_rate1
+```
+*Comment on the quality of fit.* 
+
+- Although one of the assumptions about LDA is violated (equal covariance), LDA model in this case fit the data quite well.
+
+&nbsp; 
+
+### 1.3 Using priors p(male) = 0.9, p(female) = 0.1 
+
+*Repeat step 2 but use priors p(male) = 0.9, p(female) = 0.1 instead.*
+```{r}
+model2 <- lda(sex ~ CL+RW, data = crabs, prior = c(0.1,0.9))
+pred2  <- predict(model2, data = crabs)
+```
+
+*How did the classification result change and why?*
+```{r out.width="80%"}
+ggplot(crabs, aes(x = CL, y = RW))+ 
+  geom_point(aes(color = c("female", "male")[pred2$class]), 
+             size  = 1.5, 
+             alpha = 0.8 )+
+  scale_color_manual(values = c('#00CCFF', '#FF3366'))+
+  labs(title  = "Classified by LDA using priors p(male) = 0.9, p(female) = 0.1 ",
+       x      = "CL", 
+       y      = "RW", 
+       colour = "Sex")+
+  theme_minimal()
+
+con_mat2   <- table("Actuals" = crabs$sex, "Predictions" = pred2$class)   
+miss_rate2 <- 1 - sum(diag(con_mat2)) / sum(con_mat2)
+con_mat2
+miss_rate2
+```
+
+- Because the lda function is dependent on the the squared Mahalanobis distance from each observation to the controid of the group plus a function of the prior probability of membership in that group and because we have changed the prior probability for each class favouring "male" class instaed of having equal priors, we got more crabs classified as males. resulting in a worse classification rate indicating these priors are not a good choice for our data set.
+
+### 1.4 Logistic Regression 
+
+*Make a similar kind of classification by logistic regression (use function glm()).*
+```{r}
+model3 <- glm(sex ~ CL + RW, family = binomial, data = crabs)
+pred3 <- predict(model3, data = data, type = "response")
+pred3 <- as.factor(ifelse(pred3 > 0.5, "Male", "Female"))
+```
+
+*Plot the classified data and compute the misclassification error.*
+```{r out.width="80%"}
+slope <- coef(model3)[2]/(-coef(model3)[3])
+intercept <- coef(model3)[1]/(-coef(model3)[3]) 
+
+ggplot(crabs, aes(x = CL, y = RW))+ 
+  geom_point(aes(color = c("female", "male")[pred3]), 
+             size  = 1.5, 
+             alpha = 0.8 )+
+  geom_abline(intercept = intercept, 
+              slope     = slope, 
+              color = "black", 
+              size  = 0.8,
+              alpha = 0.8)+
+  scale_color_manual(values = c('#00CCFF', '#FF3366'))+
+  labs(title  = "Australian Crabs",
+       x      = "CL", 
+       y      = "RW", 
+       colour = "Sex")+
+  theme_minimal()
+
+con_mat3   <- table("Actuals" = crabs$sex, "Predictions" = pred3)   
+miss_rate3 <- 1 - sum(diag(con_mat3)) / sum(con_mat3)
+con_mat3
+miss_rate3
+```
+
+*Compare these results with the LDA results.* 
+
+- Both results are similar, and Logistic regression does not have the assumptions that lda has so it is more universal.
+
+*Report the equation of the decision boundary and draw the decision boundary in the plot of the classified data.*
+
+- $P(sex) = \frac {1}{1 + e^{-(13.617 \ + \ 4.631 \ CL \ - \ 12.564 \ RW)}}$
+
+
+## Assignment 2. Analysis of credit scoring
+
+```{r}
+library(tree)
+library(ggplot2)
+library(e1071)
+library(SDMTools)
+library(ggrepel)
+library(boot)
+library(fastICA)
+```
+
+```{r}
+#Step 1
+data <- read.csv("Data/creditscoring.csv", header = TRUE)
+
+n     <- dim(data)[1]
+set.seed(12345)
+id    <- sample(1:n, floor(n*0.5))
+train <- data[id,]
+
+id1   <- setdiff(1:n, id)
+set.seed(12345)
+id2   <- sample(id1, floor(n*0.25))
+valid <- data[id2,]
+id3   <- setdiff(id1,id2)
+test  <- data[id3,]
+```
+
+### 2.2 Deviance vs Gini
+
+```{r}
+#Step 2
+
+D_tree <- function(data, measure){
+  model     <- tree(as.factor(good_bad) ~ ., data = train, split = measure)
+  fit       <- predict(model, newdata = data, type="class")
+  con_mat   <- table( "Actual" = data$good_bad, "Predicted" = fit)
+  miss_rate <- 1-sum(diag(con_mat))/sum(con_mat)
+  
+  result    <- list("Confusion Matrix" = con_mat, "Missclassification Rate" = miss_rate)
+  return(result)
+}
+```
+
+
+### "Deviance"
+
+```{r}
+print("Training data")
+D_tree(train, "deviance")
+
+print("Testing data")
+D_tree(test, "deviance")
+```
+
+
+### "Gini"
+
+```{r}
+print("Training data")
+D_tree(train, "gini")
+
+print("Testing data")
+D_tree(test, "gini")
+```
+
+- Using Deviance measurement "cross-entropy" give better error rates with less complexity
+
+
+### 2.3 Optimal Tree
+```{r fig.height=4, out.width="80%"}
+#Step 3
+my_tree <- tree(as.factor(good_bad) ~ ., data = train, split = "deviance")
+
+index      <- summary(my_tree)[4]$size
+trainScore <- rep(0,index)
+testScore  <- rep(0,index)
+
+for(i in 2:index) {
+  prunedTree    <- prune.tree(my_tree,best=i)
+  pred          <- predict(prunedTree, newdata=valid,  type="tree")
+  trainScore[i] <- deviance(prunedTree)
+  testScore[i]  <- deviance(pred)
+}
+  
+plot(2:index, 
+     trainScore[2:index], 
+     col  = "Red",
+     type = "b", 
+     main = "Dependence of Deviance",
+     ylim = c(250,600), 
+     pch  = 19, 
+     cex  = 1, 
+     xlab = "Number of Leaves",
+     ylab = "Deviance")
+points(2:index, 
+       testScore[2:index], 
+       col  = "Blue", 
+       type = "b", 
+       pch  = 19, 
+       cex  = 1)
+
+  
+final_tree <- prune.tree(my_tree, best = 4)
+final_fit  <- predict(final_tree, newdata = test, type="class")
+final_mat  <- table("Actual" = test$good_bad, "Predeicted" = final_fit)
+final_rate <- 1-sum(diag(final_mat))/sum(final_mat)
+```
+
+
+
+```{r fig.height=4, out.width="80%"}
+plot(final_tree)
+text(final_tree, pretty = 0)
+summary(final_tree)
+list("Confusion Matrix" = final_mat, "Misclassification Rate" = final_rate)
+```
+
+&nbsp; 
+
+- The optimal tree "which is a pruned deviance tree" is constructed from 4 leaves and 3 nodes using 3 variables "savings", "duration" & "history" in order of their importance.
+
+- Missclassification rate of the otimal tree using the test data is 0.256 which is a slightly better than the whole tree produeced by deviance measurment.
+
+- The nodes (5, 3 & 9) are the roots of sub-trees from the main tree that has been snipped off.
+
+- The 0.251 error rate in the summary is for the training data.
+
+&nbsp;
+
+### 2.4 Naive Bayes
+```{r}
+#Step 4
+bayes <- function(data){
+  model     <- naiveBayes(as.factor(good_bad) ~ ., data = train)
+  fit       <- predict(model, newdata = data)
+  con_mat   <- table("Actual" = data$good_bad, "Predicted" = fit)
+  miss_rate <- 1-sum(diag(con_mat))/sum(con_mat)
+  
+  result    <- list("Confusion Matrix" = con_mat, "Missclassification Rate" = miss_rate)
+  return(result)
+}
+print("Training data")
+bayes(train)
+print("Testing data")
+bayes(test)
+
+```
+
+- Naive Bayes error rate was higher in both training and testing data than the optimal tree, however rate of False-Positive is less than optimal tree.
+
+
+### 2.5 Using Thresholds
+```{r out.width="80%"}
+#Step 5
+
+pi          <- seq(0.05, 0.95, 0.05)
+
+tree_fit    <- predict(final_tree, newdata = test)
+tree_good   <- tree_fit[,2]
+true_assign <- ifelse(test$good_bad == "good", 1, 0)
+
+tree_TPR_FPR   <- matrix(nrow = 2, ncol = length(pi))
+rownames(tree_TPR_FPR) <- c("TPR", "FPR")
+
+for (i in 1:length(pi)){
+  tree_assign <- ifelse(tree_good > pi[i], 1, 0)
+  tree_mat    <- confusion.matrix(tree_assign, true_assign)
+  
+  tpr1 <- tree_mat[2,2]/(tree_mat[2,1] + tree_mat[2,2])
+  fpr1 <- tree_mat[1,2]/(tree_mat[1,1] + tree_mat[1,2])
+  
+  tree_TPR_FPR[,i] <- c(tpr1,fpr1)
+}
+```
+
+TPR & FPR for Optimal Tree
+
+```{r out.width="80%"}
+knitr::kable(round(tree_TPR_FPR,2))
+```
+
+
+```{r}
+#options(scipen = 999)
+bayes      <- naiveBayes(good_bad ~ ., data = train)
+bayes_fit  <- predict(bayes, newdata = test, type = "raw") 
+bayes_good <- bayes_fit[,2]
+
+bayes_TPR_FPR <- matrix(nrow = 2, ncol = length(pi))
+rownames(bayes_TPR_FPR) <- c("TPR", "FPR")
+
+
+for (i in 1:length(pi)) {
+  bayes_assign <- ifelse(bayes_good > pi[i], 1, 0)
+  bayes_mat    <- confusion.matrix(bayes_assign, true_assign)
+  
+  tpr2 <- bayes_mat[2,2]/(bayes_mat[2,1] + bayes_mat[2,2])
+  fpr2 <- bayes_mat[1,2]/(bayes_mat[1,1] + bayes_mat[1,2])
+  
+  bayes_TPR_FPR[,i] <- c(tpr2,fpr2)
+}
+```
+
+TPR & FPR for Naive Bayes
+
+```{r out.width="80%"}
+knitr::kable(round(bayes_TPR_FPR,2))
+```
+
+```{r out.width="80%"}
+# ROC Optimal Tree & Naive Bayes
+ggplot() + 
+  geom_line(aes(x = tree_TPR_FPR[2,], y = tree_TPR_FPR[1,], col = "Optimal Tree")) + 
+  geom_line(aes(x = bayes_TPR_FPR[2,], y = bayes_TPR_FPR[1,], col = "Naive Bayes")) + 
+  xlab("False-Positive Rate") + 
+  ylab("True-Positive Rate") +
+  ggtitle("ROC")+
+  theme_minimal()
+```
+
+ - From the ROC Naive Bayes performs better due to it's larger AUC, this is because in all thresholds used the percentage of FPR to TPR in Naive Bayes is smaller than its percentage in the optimal tree. 
+
+&nbsp; 
+ 
+### 2.6 Applying Loss Penalty 
+
+```{r}
+loss_mat <- matrix(c(0,10,1,0), nrow = 2)
+
+loss_fun <- function(data,loss_mat){
+  prob        <- ifelse(data$good_bad == "good",1,0)
+  
+  bayes_model <- naiveBayes(as.factor(good_bad) ~ ., data = train)
+  bayes_fit   <- predict(bayes_model, newdata = data, type = "raw")
+  
+  #To penalize the FPR, the probability of the predicted as good need to be 
+  #10 times the probability of the predicted as bad to be classified as good
+  bayes_fit   <- ifelse(loss_mat[1,2] * bayes_fit[,2] > loss_mat[2,1] * bayes_fit[,1],1,0)
+  
+  con_mat     <- table("Actual" = prob, "Predicted" = bayes_fit)
+  miss_rate   <- 1-sum(diag(con_mat))/sum(con_mat)
+  rownames(con_mat) <- c("Bad", "Good")
+  colnames(con_mat) <- c("Bad", "Good")
+    
+  result    <- list("Confusion Matrix" = con_mat, "Missclassification Rate" = miss_rate)
+  return(result)
+  }
+
+print("Training data")
+loss_fun(train,loss_mat)
+print("Testing data")
+loss_fun(test,loss_mat)
+```
+
+- When applying the loss matrix,the FPR has dramatically decreased, however the overall missclassification rate has deteriorated.
+
+
+## Assignment 3. Uncertainty estimation
+
+### 3.1 Appropriate Model
+```{r fig.height=4, out.width="80%"}
+state <- read.csv2("Data/State.csv", header = TRUE)
+state <- state[order(state$MET),]
+
+ggplot(data = as.data.frame(state), aes(y = state[,1], x = state[,3]))+
+  xlab("MET") + ylab("EX")+
+  geom_text_repel(label = state[,8], size = 2)+
+  geom_point(color = 'red')+
+  theme_minimal()
+```
+
+- Because it's hard to select any model without overfitting and we don't know the distribution of the data, a combination of ploynomial model or splines with bootstrap would be good option.
+
+
+### 3.2 Tree Model
+```{r fig.height=4, out.width="80%"}
+tree_model <- tree(EX ~ MET, 
+                   data = state, 
+                   control = tree.control(nobs = nrow(state), 
+                                          minsize = 8))
+set.seed(12345)
+best_tree1 <- cv.tree(tree_model)
+best_tree2 <- prune.tree(tree_model, best = 3)
+summary(best_tree2)
+
+plot(best_tree2)
+text(best_tree2, pretty=1, 
+     cex = 0.8, 
+     xpd = TRUE)
+
+tree_pred <- predict(best_tree2, newdata = state)
+
+ggplot(data = as.data.frame(state), 
+       aes(y = state[,1], x = state[,3])) +
+  xlab("MET") + 
+  ylab("EX") +
+  geom_point(col = "red") +
+  geom_line(aes(x = state$MET, y = tree_pred), col = "#3366FF", size = 0.7)+
+  theme_minimal()
+
+hist(residuals(best_tree2),
+     main = "Residuals Histogram",
+     xlab = "Residuals")
+```
+
+- An ideal representation of the residuals in the histogram should take a Normal distribution where most of the ressiduals are close to zero and few in the positive and the negative side, however in this case it is not and there are many predictions with high residuals on the sides, also on the positive side there are more outliers (have high residuals)
+
+- The tree model fit very poorly to the data, there are many outliers on both sides of the three terminal nodes.
+
+&nbsp;
+
+### 3.3 Nonparametric Bootstrap
+
+```{r  fig.height=4, out.width="80%"}
+f <- function(data, ind){
+  set.seed(12345)
+  sample  <- state[ind,]
+  my_tree <- tree(EX ~ MET, 
+                data = sample,
+                control = tree.control(nobs = nrow(sample), minsize = 8)) 
+  
+  pruned_tree <- prune.tree(my_tree, best = 3) 
+
+  pred    <- predict(pruned_tree, newdata = state)
+  return(pred)
+}
+
+res  <- boot(state, f, R=1000)
+
+conf <- envelope(res, level=0.95) 
+
+ggplot(data = as.data.frame(state), 
+       aes(y = state[,1], x = state[,3])) +
+  xlab("MET") + 
+  ylab("EX") +
+  geom_point(col = "red") +
+  geom_line(aes(x = state$MET, y = tree_pred), col = "#3366FF", size = 0.7)+
+  geom_line(aes(x = state$MET, y = conf$point[1,]), col = "#6699FF", size = 0.7)+
+  geom_line(aes(x = state$MET, y = conf$point[2,]), col = "#6699FF", size = 0.7)+
+  theme_minimal()
+```
+
+
+- The confidence interval is bumby because of the variance of point estimates as we are getting large and varied residuals every time take a bootstrap sample.
+
+- Because the confidence interval is rather large it confirms the belief that the tree model is a poor fit for this data set and not reliable.
+
+
+### 3.4 Parametric Bootstrab
+
+```{r fig.height=4, out.width="80%"}
+mle <- best_tree2
+
+rng <- function(data, mle){ 
+  data1    <- data.frame(EX = data$EX, MET = data$MET) 
+  n        <- length(data1$EX)
+  pred     <- predict(mle, newdata = state)
+  residual <- data1$EX - pred
+  data1$EX <- rnorm(n, pred, sd(residual))
+  return(data1)
+}
+
+f1 <- function(data){
+  res      <- tree(EX ~ MET,
+                  data = data, 
+                  control = tree.control(nobs=nrow(state),minsize = 8))
+  opt_res  <- prune.tree(res, best = 3)
+  return(predict(opt_res, newdata = data))
+}
+
+f2 <- function(data){
+  res      <- tree(EX ~ MET,
+                  data = data, 
+                  control = tree.control(nobs=nrow(state),minsize = 8))
+  opt_res  <- prune.tree(res, best = 3)
+  n        <- length(state$EX)
+  opt_pred <- predict(opt_res, newdata = state)
+  pred     <- rnorm(n,opt_pred, sd(residuals(mle)))
+  return(pred)
+}
+set.seed(12345)
+par_boot_conf <- boot(state, statistic = f1, R = 1000, mle = mle, ran.gen = rng, sim = "parametric") 
+conf_interval <- envelope(par_boot_conf, level=0.95)  
+
+set.seed(12345)
+par_boot_pred <- boot(state, statistic = f2, R = 1000, mle = mle, ran.gen = rng, sim = "parametric") 
+pred_interval <- envelope(par_boot_pred, level=0.95)  
+
+
+ggplot(data = as.data.frame(state), 
+       aes(y = state[,1], x = state[,3])) +
+  xlab("MET") + 
+  ylab("EX") +
+  geom_point(col = "red") +
+  geom_line(aes(x = state$MET, y = tree_pred), col = "#3366FF", size = 0.7) +
+  geom_line(aes(x = state$MET, y = conf_interval$point[1,]), col = "#6699FF", size = 0.7) +
+  geom_line(aes(x = state$MET, y = conf_interval$point[2,]), col = "#6699FF", size = 0.7) +
+  geom_line(aes(x = state$MET, y = pred_interval$point[1,]), col = "black") +
+  geom_line(aes(x = state$MET, y = pred_interval$point[2,]), col = "black")+
+  theme_minimal()
+```
+
+- The confidence interval is smoother and narrawer with parametric bootsrap which make the tree model a slightly more reliable, however the confidence interval still wide enough allowing wide range of the prediction means to fit in.
+
+- Only 2 points out of 48 are outside the prediction interval which is around 5%, and that's how it should be because we acounted for the error rate(the residuals) in the prediction interval, meaning 95% the future sampled EX values should be withen this interval.
+
+&nbsp; 
+
+## 3.5 Optimal Bootstrap 
+
+- The Parametric Bootstrap is more optimal because it gives less variance in the confidence interval than Nonparametric Bootstrap even with high residuals.
+
+\newpage 
+
+
+## Assignment 4. Principal components
+
+### 4.1 Standard PCA
+
+```{r fig.height=4, out.width="80%"}
+data    <- read.csv2("Data/NIRspectra.csv", header = TRUE)
+spectra <- data
+
+spectra$Viscosity <- c()
+comp              <- prcomp(spectra) 
+lambda            <- comp$sdev^2
+
+var               <- sprintf("%2.3f", lambda/sum(lambda)*100)
+
+screeplot(comp, main = "Principal Components")
+
+ggplot() +
+  geom_point(aes(comp$x[,1],comp$x[,2]))+
+  xlab("x1") + ylab("x2")+
+  theme_minimal()
+```
+
+- As can be seen from the plot, the first two components explain more than 99% of the variation, and yes there are couple of oulier diesel fuels.
+
+&nbsp;
+
+### 4.2 Score Plots
+
+```{r fig.height=4, out.width="80%"}
+plot(comp$rotation[,1], 
+     main="PC1 Traceplot",
+     xlab = "Features",
+     ylab = "Scores")
+plot(comp$rotation[,2], 
+     main="PC2 Traceplot",
+     xlab = "Features",
+     ylab = "Scores")
+```
+
+- As can be seen from the plots, PC2 is only explained by few features (features around #110 to #126)
+
+\newpage 
+
+### 4.3 Independent Component Analysis
+
+```{r fig.height=4, out.width="80%", warning=FALSE, message=FALSE}
+a   <- as.matrix(spectra)
+set.seed(12345)
+ica <- fastICA(a, 
+               2, 
+               fun = "logcosh", 
+               alpha = 1,
+               row.norm = FALSE, 
+               maxit = 200, 
+               tol = 0.0001, 
+               verbose = TRUE) 
+
+posterior = ica$K %*% ica$W
+
+plot(posterior[,1], 
+     main="PC1 Traceplot",
+     xlab = "Features",
+     ylab = "Scores")
+plot(posterior[,2], 
+     main="PC2 Traceplot",
+     xlab = "Features",
+     ylab = "Scores")
+
+ggplot() +
+  geom_point(aes(ica$S[,1],ica$S[,2])) +
+  labs(x = "W1", y = "W2")+
+  theme_minimal()
+```
+
+- W is the un-mixing matrix that maximizes the non-gaussianity of the components so we can extract the independent components.
+
+- The ICA plot basically takes the standarized PCA factors after scaling and whitening "projecting the data onto its principal component directions" and rotate them to maximmize the non-gaussianity of the two components, thats why we see the ICA plot as a rotated PCA plot.
+
+\newpage
+
+# Lab 3 Block 1
+## 1. KERNEL METHODS:
+
+```{r}
+library(geosphere)
+```
+
+```{r}
+set.seed(1234567890)
+
+stations <- read.csv("Data/stations.csv",fileEncoding = "Latin1")
+temps    <- read.csv("Data/temps50k.csv")
+st       <- merge(stations,temps,by="station_number")
+st$time  <- as.POSIXct(st$time, format="%H:%M:%S")
+
+
+h_distance <- 10000 
+h_date     <- 900
+h_time     <- 36
+
+a <- 14.826
+b <- 58.4274 
+station_poi <- c(a,b)
+
+times <- c("04:00:00", "06:00:00", "08:00:00","10:00:00",
+           "12:00:00" ,"14:00:00", "16:00:00","18:00:00",
+           "20:00:00","22:00:00","24:00:00")
+times <- as.POSIXct(times, format="%H:%M:%S")
+
+temp           <- matrix(0,length(times),2)
+colnames(temp) <- c("Summing", "Multiplying")
+
+k_station <- function(obs, poi)
+{
+  dist <- abs(distHaversine(obs, poi) / 1000)
+  k    <- exp(-(dist^2)/h_distance)
+  return(k)
+}
+k1 <- k_station(st[,c("longitude","latitude")], station_poi)
+
+
+#Re-arranging the date data so only months and days is considered
+dates <- as.POSIXct(st$date, format="%Y-%m-%d")
+mons  <- as.numeric(format(dates,"%m"))
+days  <- as.numeric(format(dates,"%d"))
+dates <- cbind(mons, days)
+
+date <- "2017-11-03" 
+date <- as.POSIXct(date)
+mon  <- as.numeric(format(date,"%m"))
+day  <- as.numeric(format(date,"%d"))
+date <- cbind(mon, day)
+
+k_date <- function(obs, poi)
+{
+  diff <- (abs(obs[,1] - poi[1]) * 30) + abs(obs[,2] - poi[2])
+  k    <- exp(-(diff^2)/h_date)
+  return(k)
+}
+k2 <- k_date(dates, date)
+
+
+k_time <- function(obs, poi)
+{
+  diff <- abs(as.numeric(difftime(obs, poi, unit = "hours")))
+  k    <- exp(-(diff^2)/h_time)
+  return(k)
+}
+k3 <- matrix(0,50000,11)
+for(j in 1:length(times)){
+  k3[,j] <- k_time(st$time, times[j])
+}
+
+
+for(j in 1:length(times)){
+  temp[j,1] <- sum(k1 * st$air_temperature + k2 * st$air_temperature + k3[,j] * st$air_temperature) / sum(k1 + k2 + k3[,j])
+  temp[j,2] <- sum(k1 * k2 * k3[,j] * st$air_temperature) / sum(k1 * k2 * k3[,j])
+}
+
+temp <- round(temp, 1)
+knitr::kable(temp)
+
+plot (temp[,1], type ="o", xaxt = "n", xlab ="Time of day", ylab = "Temperature", main = "Summing Kernels", ylim = c(2.5,6))
+axis (1, at =1:11, labels = seq (04 ,24 ,2))
+```
+
+*Show that your choice for the kernels’ width is sensible, i.e. that it gives more weight
+to closer points. Discuss why your of definition closeness is reasonable.* 
+
+- h = 10000, is the smoothing factor for the distance between stations which is 100 squared to adjust for the squared distance, meaning we are weighting the temperature every 100km which is reasonable range for the temperature to change.
+
+- h = 900, is the smoothing factor for the difference between dates which is 30 days squared, weighting the temperature on 30 days basis.
+
+- h = 36, is the smoothing factor for the difference between hours which is 6 hours squared, following the same concept above.
+
+- Other things that can be noticed is that, the date and time follow cyclical trend and values should be adjusted before calculating the distance otherwise for example January and Decemeber will be very far apart and the same thing for 11PM and 1AM, howver due to lack of time adjustment is not made.  
+
+- In the selected times we have 24:00:00 while in the data set it is 00:00:00 this also could be changed but it will not matter much as long as the point above is not fixed. Because of this the predicted tempretures have a great variance at 24:00:00.
+
+
+&nbsp; 
+
+*Instead of combining the three kernels into one by summing them up, multiply them.
+Compare the results obtained in both cases and elaborate on why they may differ.* 
+
+```{r}
+plot (temp[,2], type ="o", xaxt = "n", xlab ="Time of day", ylab = "Temperature", main = "Multiplying Kernels", ylim = c(2.5,6))
+axis (1, at =1:11, labels = seq (04 ,24 ,2))
+```
+
+- Multiplying is more sensetive to changes in h values, because every kernel is affected by the others, which means choosing a higher value of h for one kernel can inflate the other kernels and require more tuning. In summation each kernel is not affected by the others so we can get reasonable results only from one kernel even if the other two perform poorly.
+ 
+
+
+## 2. SUPPORT VECTOR MACHINES
+
+*Use the function ksvm from the R package kernlab to learn a SVM for classifying the spam dataset that is included with the package. Consider the radial basis function kernel (also known as Gaussian) with a width of 0.05. For the C parameter, consider values 0.5, 1 and 5. This implies that you have to consider three models.*
+```{r}
+library("kernlab")
+data("spam")
+```
+
+*Perform model selection, i.e. select the most promising of the three models (use any method of your choice except cross-validation or nested cross-validation).*
+```{r}
+n      <- dim(spam)[1]
+set.seed(12345)
+id     <- sample(1:n, floor(n*0.5))
+train1 <- spam[id,]
+
+id1    <- setdiff(1:n, id)
+set.seed(12345)
+id2    <- sample(id1, floor(n*0.3))
+valid  <- spam[id2,]
+
+train2 <- rbind(train1,valid)
+
+id3    <- setdiff(id1,id2)
+test   <- spam[id3,]
+
+
+svm <- function(data1, data2, c){
+  model     <- ksvm(type ~ ., 
+                    data   = data1, 
+                    type   = "C-svc",
+                    kernel = "rbfdot", 
+                    kpar   = list(sigma = 0.05), 
+                    C      = c)  
+  
+  pred      <- predict(model, newdata = data2)  
+  con_mat   <- table("Predictions" = pred, "Actuals" = data2$type)
+  miss_rate <- 1 - sum(diag(con_mat)) / sum(con_mat)
+  
+  TN <- con_mat[1,1]
+  TP <- con_mat[2,2]
+  FN <- con_mat[1,2]
+  FP <- con_mat[2,1]
+  TPR <- TP / (TP + FN)
+  FPR <- FP / (FP + TN)
+  
+  res <- round(cbind(miss_rate, FPR, TPR), 3)
+  colnames(res) <- c("Error", "FPR", "TPR")
+  
+  if(c == 0.5){
+    return(knitr::kable(res, caption = "C = 0.5"))
+  }
+  
+  if(c == 1){
+    return(knitr::kable(res, caption = "C = 1"))
+  }
+  
+  if(c == 5){
+    return(knitr::kable(res, caption = "C = 5"))
+  }
+}
+```
+
+
+Validation Data
+```{r}
+svm(train1, valid, c = 0.5)
+svm(train1, valid, c = 1)
+svm(train1, valid, c = 5)
+```
+
+- From validation we can see that the model with C = 1 is the best model since error rate and FPR are the lowest and TPR is the highest, C = 0.5 is under fitted and C = 5 is overfitted.
+\newpage  
+
+*Estimate the generalization error of the SVM selected above (use any method of your choice except cross-validation or nested cross-validation).*
+```{r}
+##2.2
+svm(train2, test, c = 1)
+```
+&nbsp; 
+
+
+*Produce the SVM that will be returned to the user, i.e. show the code.*
+```{r}
+##2.3
+print(model     <- ksvm(type ~ ., 
+                        data   = spam, 
+                        type   = "C-svc",
+                        kernel = "rbfdot", 
+                        kpar   = list(sigma = 0.05), 
+                        C      = 1))
+
+```
+&nbsp; 
+
+*What is the purpose of the parameter C?*
+
+- The C value controls the margins between support vectors and the classification line, this cost parameter penalizes large residuals. So a larger cost will result in a more flexible model with fewer misclassifications. In effect the cost parameter allows to adjust the bias/variance trade-off. The greater the cost parameter, the more variance in the model and the less bias.
+
+
+\newpage
+
+## 3. NEURAL NETWORKS
+
+*Train a neural network to learn the trigonometric sine function. To do so, sample 50 points uniformly at random in the interval [0, 10]. Apply the sine function to each point. The resulting pairs are the data available to you. Use 25 of the 50 points for training and the rest for validation.*
+
+```{r}
+library(neuralnet)
+
+set.seed(1234567890)
+Var  <- runif(50, 0, 10)
+trva <- data.frame(Var, Sin = sin(Var))
+tr   <- trva[1:25,] # Training
+va   <- trva[26:50,] # Validation
+```
+
+
+*The validation set is used for early stop of the gradient descent. That is, you should use the validation set to detect when to stop the gradient descent and so avoid overfitting. Stop the gradient descent when the partial derivatives of the error function are below a given threshold value. Check the argument threshold in the documentation.*
+
+*Use a neural network with a single hidden layer of 10 units. Use the default values for the arguments not mentioned here. Choose the most appropriate value for the threshold. Motivate your choice. Provide the final neural network learned with the chosen threshold.*
+
+```{r}
+# Random initialization of the weights in the interval [-1, 1]
+mse     <- rep(0,10) # numeric class 10 elements with 0 values
+winit   <- runif(50,-1,1) 
+mses    <- numeric()
+for(i in 1:10) {
+  set.seed(1234567890)
+  nn <- neuralnet(Sin ~ Var, 
+                  data         = tr, 
+                  hidden       = 10,
+                  threshold    = i/1000, 
+                  startweights = winit)
+  
+  pred   <- predict(nn, va) 
+  mse[i] <- mean((pred - va$Sin)^2)
+}
+plot(mse, type = "b", pch = 19, lwd = 1, col = ifelse(mse == mse[which.min(mse)],2,1))
+best <- which.min(mse) 
+
+nn <- neuralnet(Sin ~ Var, 
+                    data         = trva, 
+                    hidden       = 10, 
+                    threshold    = best/1000, 
+                    startweights = winit)
+
+plot(prediction(nn)$rep1, col="Black")  # predictions (black dots)
+points(trva, col = "red") # data (red dots)
+```
+
+```{r}
+plot(nn, rep="best")
+```
+
+
+\newpage
+
+# Lab 1 Block 2
+
+```{r}
+library(mboost)
+library(randomForest)
+```
+
+
+```{r fig.align='center', fig.height=3.5, warning=FALSE}
+### 1. ENSEMBLE METHODS
+sp      <- as.data.frame(read.csv2("Data/spambase_block2.csv"))
+sp$Spam <- as.factor(sp$Spam)
+
+n=dim(sp)[1]
+set.seed(12345)
+id=sample(1:n, floor(n*2/3))
+train=sp[id,]
+test=sp[-id,]
+
+k         <- seq(10,100,10)
+miss_rate <- matrix(0,10,2)
+colnames(miss_rate) <- c("Ada Boost", "Random Forest")
+rownames(miss_rate) <- c("10 Ts", "20 Ts", "30 Ts", "40 Ts", "50 Ts", "60 Ts", "70 Ts", "80 Ts", "90 Ts", "100 Ts")
+
+# Adabtive Boosting
+for(i in k){
+  ada_model <- blackboost(train$Spam ~ ., 
+                          data    = train, 
+                          family  = AdaExp(), 
+                          control = boost_control(mstop = i))
+  
+  ada_pred  <- predict(ada_model, 
+                       newdata = test, 
+                       type    ="class")
+  
+  ada_mat   <- table(Predected = ada_pred, Actual = test$Spam)
+  
+  miss_rate[i/10,1] <- round((1 - sum(diag(ada_mat))/sum(ada_mat)),4)
+}
+
+Ada_Boost_Model <- blackboost(train$Spam ~ ., 
+                              data    = train, 
+                              family  = AdaExp(), 
+                              control = boost_control(mstop = 100))
+
+ada_boost_pred  <- predict(Ada_Boost_Model, 
+                           newdata = test, 
+                           type    ="class")
+
+ada_boost_mat   <- table(Predected = ada_boost_pred, Actual = test$Spam)
+
+library(randomForest)
+# Random Forest
+for(i in k){
+  rf_model           <- randomForest(train$Spam ~ ., 
+                                     data  = train, 
+                                     ntree = i,
+                                     importance = TRUE)
+  
+  rf_pred            <- predict(rf_model, 
+                                newdata = test, 
+                                type    ="class")
+  
+  rf_mat             <- table(Predected = rf_pred, Actual    = test$Spam)
+  miss_rate[i/10,2] <- round((1 - sum(diag(rf_mat))/sum(rf_mat)),4)
+}
+
+list("Adaboost Least Error" = miss_rate[which.min(miss_rate[,1])], 
+     "Adaboost Confusion Matrix" = ada_boost_mat, 
+     "Random Forest Least Error" = miss_rate[which.min(miss_rate[,2])],
+     "Random Forest Confusion Matrix" = rf_mat)
+
+knitr::kable(miss_rate)
+```
+
+Analysis:
+
+- By going through different values of nu (learning rate / shrinkage parameter) the default value set by the boost_control() function is 0.1 which contradicts with value of 0.5 set in the AdaExp() function (View(AdaExp)). nu had to be set to 0.5 manually to obtain the Exponential Loss function, however cross checking with other packages my be required.
+
+$$w_i \leftarrow w_i . exp \ [\alpha_m . I(y_i \neq G_m(x_i))], \ i = 1, 2, . . . ,N$$
+$$\alpha_m = L \ log (\frac {1-err_m}{err_m}) \ where \ L\leq1 \ is \ the \ learning \ rate$$
+
+```{r}
+plot(as.vector(t(miss_rate[,1])), 
+     main = "Adaboost Error Rate", 
+     xlab = "Number of Trees (in 10s)", 
+     ylab = "Error Rate", 
+     ylim = c(0.04,0.13),
+     type = "l", 
+     pch  = 19, 
+     col  = "red")
+```
+
+- Adaboost (by setting nu = 0.5) start to blateau when the number of iterations (stumbs/trees) is around 50 and the least error achieved is 0.0593 which is higher but not far from Random Forest least error.
+
+- Using different values for nu the least error rate (0.0515) achieved when number of iterations was highest (100) and Learning Rate = 0.6, which is far from (0.1330) using only 10 stumbs and learning rate = 0.1, the general trend is that the error decrease with increasing either the number of iterations or Learning Rate, or both. However, the increase in learning rate may cause overfitting.
+
+```{r}
+plot(miss_rate[,2],
+     main = "Random Forest Error Rate", 
+     xlab = "Number of Trees (in 10s)", 
+     ylab = "Error Rate",
+     ylim = c(0.04,0.13),
+     type = "l", 
+     pch  = 19,
+     col  = "black")
+plot(rf_model, main = "OOB Error Rate")
+```
+
+- Random forest performance was more stable and did not fluctuate much despite the number of trees used,it ranged between (0.0469) which is the least error achieved using 80 trees and (0.0593) the highest eror using only 10 trees which is exactly same as Adaboost. This fluctuation can be explained by the randomness of bootstrab sampling and feature sampling.
+
+- Number of variables tried at each split is 7, with many relevant variables and relatively few noise variables, the probability of a relevant variable being selected at any split is is very high, that's why the error rate is better in the Random Forest model.
+
+- Out of Bag  error(OOB) is 5.05% stablizes at around 40 trees, which measures the misclassification rate of the OOB observations using the trees that they were not trained on. which correlates with missclassification rate of the whole random forest.
+
+- The most significant variables that lead to the least impurity when selected are Char4, Char5, Word7, Capitalrun2 and Word16 using Gini index which measures the effect on prediction were this variable not available.
+
+
+
+# 2. Mixture Models
+
+```{r}
+set.seed(1234567890)
+max_it <- 100 # max number of EM iterations
+min_change <- 0.1 # min change in log likelihood between two consecutive EM iterations
+N=1000 # number of training points
+D=10 # number of dimensions
+x <- matrix(nrow=N, ncol=D) # training data
+true_pi <- vector(length = 3) # true mixing coefficients
+true_mu <- matrix(nrow=3, ncol=D) # true conditional distributions
+true_pi=c(1/3, 1/3, 1/3)
+true_mu[1,]=c(0.5,0.6,0.4,0.7,0.3,0.8,0.2,0.9,0.1,1)
+true_mu[2,]=c(0.5,0.4,0.6,0.3,0.7,0.2,0.8,0.1,0.9,0)
+true_mu[3,]=c(0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5)
+plot(true_mu[1,], 
+     type="o", 
+     col="blue", 
+     ylim=c(0,1), 
+     main = "Original Data", 
+     xlab = "Number of Dimensions", 
+     ylab = "True Mu")
+points(true_mu[2,], type="o", col="red")
+points(true_mu[3,], type="o", col="green")
+# Producing the training data
+for(n in 1:N) {
+  k <- sample(1:3,1,prob=true_pi)
+  for(d in 1:D) {
+    x[n,d] <- rbinom(1,1,true_mu[k,d])
+  }
+}
+
+EM <- function(c){
+K=c # number of guessed components
+z <- matrix(nrow=N, ncol=K) # fractional component assignments
+pi <- vector(length = K) # mixing coefficients
+mu <- matrix(nrow=K, ncol=D) # conditional distributions
+llik <- vector(length = max_it) # log likelihood of the EM iterations
+# Random initialization of the paramters
+pi <- runif(K,0.49,0.51)
+pi <- pi / sum(pi)
+for(k in 1:K) {
+  mu[k,] <- runif(D,0.49,0.51)
+}
+pi
+mu
+
+for(it in 1:max_it) {
+
+  #plot(mu[1,], type="o", col="blue", ylim=c(0,1))
+  #points(mu[2,], type="o", col="red")
+  #points(mu[3,], type="o", col="green")
+  #points(mu[4,], type="o", col="yellow")
+  
+  #Sys.sleep(0.5)
+  # E-step: Computation of the fractional component assignments (responsiblities)
+  # Your code here
+  for (n in 1:N) {
+    phi = c()
+    for (j in 1:K) {
+      y1 = mu[j,]^x[n,]
+      y2 = (1- mu[j,])^(1-x[n,])
+      phi = c(phi, prod(y1,y2))
+    }
+    z[n,] = (pi*phi) / sum(pi*phi) 
+  } 
+ 
+  #Log likelihood computation.
+  # Your code here
+
+  likelihood <-matrix(0,1000,K)
+  llik[it] <-0
+  for(n in 1:N)
+  {
+    for (k in 1:K)
+    {
+      likelihood[n,k] <- pi[k]*prod( ((mu[k,]^x[n,])*((1-mu[k,])^(1-x[n,]))))
+    }
+    llik[it]<- sum(log(rowSums(likelihood)))
+  }
+
+  cat("iteration: ", it, "log likelihood: ", llik[it], "\n")
+  flush.console()
+  # Stop if the lok likelihood has not changed significantly
+  # Your code here
+  if (it > 1)
+  {
+    if (llik[it]-llik[it-1] < min_change)
+    {
+      if(K == 2)
+        {
+          plot(mu[1,], 
+               type="o", 
+               col="blue", 
+               ylim=c(0,1),
+               main = "K = 2", 
+               xlab = "Number of Dimensions", 
+               ylab = "Estimated Mu")
+          points(mu[2,], type="o", col="red")
+        }
+      else if(K==3)
+        {
+          plot(mu[1,],            
+               type="o", 
+               col="blue", 
+               ylim=c(0,1),
+               main = "K = 3", 
+               xlab = "Number of Dimensions", 
+               ylab = "Estimated Mu")
+          points(mu[2,], type="o", col="red")
+          points(mu[3,], type="o", col="green")
+        }
+  
+      else
+        {
+          plot(mu[1,],            
+               type="o", 
+               col="blue", 
+               ylim=c(0,1),
+               main = "K = 4", 
+               xlab = "Number of Dimensions", 
+               ylab = "Estimated Mu")
+          points(mu[2,], type="o", col="red")
+          points(mu[3,], type="o", col="green")
+          points(mu[4,], type="o", col="yellow")
+        }
+      
+      break()
+    }
+  } 
+  
+  #M-step: ML parameter estimation from the data and fractional component assignments
+  # Your code here
+  mu<- (t(z) %*% x) /colSums(z)
+  # N - Total no. of observations
+  pi <- colSums(z)/N
+  
+
+}
+pi
+mu
+plot(llik[1:it], 
+     type="o", 
+     main = "Log Likelihood", 
+     xlab = "Number of Iterations", 
+     ylab = "Log Likelihood")
+}
+EM(2)
+EM(3)
+EM(4)
+
+```
+
+## Analysis:
+
+- After we created our data points using parameters mu and pi, the EM function takes only the data points and guess mu and pi(pi here is like a prior probablity based on our best guess that the responsiblities are equal but it can be set differently)
+
+- In E-step we compute the posterior responsiblities for each observation based on Bayes Theorem, if K=2 we make the assumbtion that the points are in two clusters, anf if it is 3 the we assume 3 clustersand so on.
+
+$$\gamma (z_{nk}) = \frac{ \pi_k * p(x_n|\mu_k)}{\sum_{j=1}^{K} \pi_j * p(x_n|\mu_j)}, where \ i = 1, 2, ...,N  $$
+
+- In the M-step we updated our mu and pi based on the new responsiblities.
+
+$$\mu_{k}^{new} = \frac{1}{N_k} \ \sum_{n=1}^{N} \gamma(z_{nk}) x_n$$
+$$\pi_{k}^{new} = \frac{N_k}{N}$$
+
+- Log likelikelihood then is calculated (doesn't matter if it is done before M-step or after) to check if the updated values of mu and pi are converging to the true values.
+
+
+- In the case of K=2 little convergence gained after the 8th iteration and stopped at 12th iteration when we started to get minimum change. the resulted values where close to the true $\mu_1$ and $\mu_2$, this because $\mu_3$ value was 0.5 in the middle of the other clusters, so this third cluster splitted between the first two clusters without complications.
+
+- When K=3 the convergence also start to blateau when we reached the 8th iteration and stopped at 46th iteration, this is because the values of first two true mus overlapping the the third mu, making it complicated for the algorithm to distinguish the third cluster from the other two (which are more distinct from each other).
+ 
+- The same thing happened when K=4 also the convergence also start to blateau when we reached the 8th iteration and stopped at 32nd iteration this time, this is because the third cluster around true Mu3 got split into two cluster, one that is close to the first Mu and the other close to the second Mu.
+
+- We can conclude from fact that the algorithm start to gain little convergence at the 8th iteration is because the first two original clusters are more distinguishable from the third cluster because their Mus overlapp the third mu, and once the estimated Mus for these two clusters are gained, the algorithm find it difficult to recognize the third cluster. 
+
+
+# Lab 2 Block 2
+
+## Assignment 1. Using GAM and GLM to examine the mortality rates
+
+&nbsp; 
+
+```{r}
+suppressWarnings(RNGversion('3.5.1'))
+
+library(readxl)
+library(ggplot2)
+library(mgcv)
+```
+
+### 1.1 Relation between Influenza & Mortality
+```{r fig.height=4, fig.width=12}
+flu <- read_excel("Data/influenza.xlsx")
+
+ggplot(flu)+
+  geom_line(aes(x = Time, y = Mortality, color = "Mortality")) +
+  geom_line(aes(x = Time, y = Influenza, color = "Influenza")) +
+  scale_color_manual("Legend", 
+                     breaks = c("Mortality", "Influenza"), 
+                     values = c("#00E6AC", "#FF3366"))+
+  theme_minimal()
+```
+
+- Since high Mortality rates correspond with high number of Influenza outbreaks, it indicates there is a relationship between Influenza and Mortality.
+
+- This relationship is not necessarily a cause and effect relationship, it could either be that "Mortality is a direct of effect to Influenza outbreaks", and/or it could mean they are both direct effects of winter (the first and last weeks in the year).
+
+- It can be seen that the increase in the number of Influenza outbreaks every winter does not linearly correspond with the increase in Mortality rates(does not increase in the same ratio). One instance is that winter 95-96 happened to have the highest Mortality rate in the recorded period but the same can not be said about the number of Influenza outbreaks.
+
+
+&nbsp; 
+
+
+### 1.2 GAM model
+```{r fig.height=8, fig.width=12}
+w <- length(unique(flu$Week))
+
+model <- gam(Mortality ~ Year + s(Week, k = w), 
+             data   = flu, 
+             family = "gaussian", 
+             method = "GCV.Cp") 
+```
+
+Probabilistic Model:
+$$y \sim N(\mu, \sigma^2) $$
+$$\hat{y} = -680.598 + 1.232846 \ (Year_i) + s_i(Week_k) + \epsilon_i$$  $$where \ i = 1,2,...,9 \ number \ of \ years, \ k = 1,2,...,52 \ number \ of \ weeks$$
+The resulting coefficients matrix will have 459 rows(i*k), k actually is less than 9 since last year is not fully recorded, and 52 columns (k).
+
+
+&nbsp; 
+
+### 1.3 Predicted vs Observed Mortality
+```{r}
+pred <- predict(model)
+
+df1 <- data.frame(Time = flu$Time, 
+                  Mortality  = flu$Mortality, 
+                  Prediction = pred,
+                  Influenza  = flu$Influenza,
+                  Residuals  = model$residuals)
+
+ggplot(df1)+
+  geom_line(aes(x = Time, y = Mortality, color = "Observed Mortality")) +
+  geom_line(aes(x = Time, y = Prediction, color = "Predicted Mortality")) +
+  scale_color_manual("Legend", 
+                     breaks = c("Observed Mortality", "Predicted Mortality"), 
+                     values = c("#FF3366", "#0071B3"))+
+  theme_minimal()
+```
+
+
+```{r fig.height=6, fig.width=12}
+summary(model)
+plot(model, residuals = TRUE, cex = 2)
+```
+
+*Report which terms appear to be significant in the model* 
+
+- "Year" which is linearly linked to Mortality is insignificant variable and has a very slight contribution to the model. 
+
+- "Week" actually is very significant and it has non-linear relationship with Mortality.
+
+- k (52 basis dimensions) is set to the total number of weeks represents the knots between the splines, while the Effective Degrees of Freedom "edf" is 14.32 which is selected based on the penalty factor set by GCV.
+
+- The model explains 68.8% of the variance (almost all of this contribution is from the "Week" spline).
+
+*Is there a trend in mortality change from one year to another?* 
+
+- The actual values of Mortality change greatly within the same year and moderately between years.
+
+- The prediction however changes only within the year itself and the change between different years basically non-existent, this is due to the fact we took linear relationship with "Year" in our model which has intangible contribution to the model. This linearity might not well descripe the actual relationship with Mortality"
+
+*Interpret the spline plot?* 
+
+- The x-axis represent the weeks, and the y-axis represent the residual values. The line represent the relation betwen Mortality and Week and it is the highest in the first and last weeks (winter) and lowest in mid-year and the interval around it is the 95% confidence interval of the Expected value of the model. The dots represent the residuals.
+
+- From the plot we can see the spline fit well on one year average data.
+
+
+
+&nbsp; 
+
+### 1.4 Prediction with Different Penalty Factors
+```{r}
+low_model  <- gam(Mortality ~ Year + s(Week, k = w, sp=0.00001), 
+                  data   = flu, 
+                  family = "gaussian")
+low_pred   <- predict(low_model)
+
+summary(low_model)
+
+high_model <- gam(Mortality ~ Year + s(Week, k = w, sp=10000), 
+                  data   = flu, 
+                  family = "gaussian")
+high_pred  <- predict(high_model)
+
+summary(high_model)
+
+df2 <- data.frame(Time  = flu$Time, 
+                  Mortality = flu$Mortality, 
+                  pred1 = low_pred, 
+                  pred2 = high_pred)
+
+ggplot(df2, aes(x = Time))+
+  geom_line(aes(y = Mortality, colour="Actual Observations"))+
+  geom_line(aes(y = pred1, colour="Prediction with low penalty"))+
+  geom_line(aes(y = pred2, colour="Prediction with high penalty"))+
+  scale_colour_manual("Legend", 
+                      breaks = c("Actual Observations", "Prediction with low penalty", "Prediction with high penalty"),
+                      values = c("#FF3366","#0071B3","#00EEFF"))+
+  theme_minimal()
+```
+
+*Examine how the penalty factor influences the estimated deviance of the model?* 
+
+- Increasing the penalty factor make the model underfitted and reduced the accuracy of the model, therefore; the deviance explained by the model got reduced.
+
+```{r}
+par(mfrow = c(1,2))
+plot(low_model)
+plot(high_model)
+```
+
+- This Increase in penalty reduces the wiggliness of the spline until it becomes a straight line. And this line is repeated over the years, that's why it gives this zigzag shape in the time series plot.
+
+*What is the relation of the penalty factor to the degrees of freedom?* 
+
+- Increasing the penalty factor eliminates the insignificant basis dimentions until it reaches 1 which means "Week" is linearly related to Mortality.
+
+
+*Do your results confirm this relationship?* 
+
+- Yes, it is.
+
+
+### 1.5 Correlation between Residuals and Influenza
+```{r}
+ggplot(df1)+
+  geom_line(aes(x = Time, y = Influenza, color = "Influenza")) +
+  geom_line(aes(x = Time, y = Residuals, color = "Residuals")) +
+  scale_color_manual("Legend", 
+                     breaks = c("Influenza", "Residuals"), 
+                     values = c("#009A73", "#989898"))+
+  theme_minimal()
+```
+
+*Is the temporal pattern in the residuals correlated to the outbreaks of influenza?* 
+
+- The Influenza could explain some of the positive residuals (where the model in 1.2 underestimates the mortality), but it still can't explain the negative and some of the positive residuals. So there is some correlation between the two.
+
+&nbsp;
+
+### 1.6 Final Model 
+```{r}
+y <- length(unique(flu$Year))
+f <- length(unique(flu$Influenza))
+
+flu_model <- gam(Mortality ~ s(Year, k = y) + s(Week, k = w) + s(Influenza, k = f), 
+                 data   = flu, 
+                 family = "gaussian", 
+                 method = "GCV.Cp") 
+
+flu_pred  <- predict(flu_model)
+
+summary(flu_model)
+```
+
+```{r fig.height=6, fig.width=12, warning=FALSE}
+par(mfrow=c(1,3))
+plot(flu_model, residuals = TRUE, cex = 2)
+```
+
+```{r}
+df3 <- data.frame(Time = flu$Time, 
+                  Mortality  = flu$Mortality, 
+                  Prediction = flu_pred,
+                  Influenza  = flu$Influenza,
+                  Residuals  = flu_model$residuals)
+
+ggplot(df3)+
+  geom_line(aes(x = Time, y = Mortality, color = "Observed Mortality")) +
+  geom_line(aes(x = Time, y = Prediction, color = "Predicted Mortality")) +
+  scale_color_manual("Legend", 
+                     breaks = c("Observed Mortality", "Predicted Mortality"), 
+                     values = c("#FF3366", "#0071B3"))+
+  theme_minimal()
+```
+
+*Conclude whether or not the mortality is influenced by the outbreaks of influenza.* 
+
+- Adding the Influenza to the model increased the accuracy considerably but that could be overfitting.
+
+- It can be concluded that outbreaks of influenza have some influence on mortality.
+
+
+\newpage
+
+## Assignment 2. High-dimensional methods
+
+### 2.1 Nearest Shrunken Centroid
+
+```{r}
+library(pamr)
+library(glmnet)
+library(kernlab)
+```
+
+```{r}
+data <- read.csv2("Data/data.csv", check.names = FALSE)
+data$Conference <- as.factor(data$Conference)
+
+n     <- dim(data)[1]
+set.seed(12345)
+ind   <- sample(1:n, floor(n*0.7))
+train <- data[ind,]
+test  <- data[-ind,]
+ 
+#train
+rownames(train) <- 1:nrow(train)
+x_train         <- t(train[,-4703]) # remove dependent variable
+y_train         <- train[[4703]]    # vector of the dependent variable
+mytrain_data    <- list(x = x_train, 
+                        y = y_train, 
+                        geneid    = as.character(1:nrow(x_train)), 
+                        genenames = rownames(x_train))
+#test 
+rownames(test) <- 1:nrow(test)
+x_test         <- t(test[,-4703]) 
+y_test         <- test[[4703]]    
+
+
+cen_model   <- pamr.train(mytrain_data)
+```
+
+```{r echo=TRUE, eval=FALSE}
+set.seed(12345)
+cvmodel     <- pamr.cv(cen_model, mytrain_data)
+```
+
+```{r include=FALSE}
+set.seed(12345)
+cvmodel     <- pamr.cv(cen_model, mytrain_data)
+```
+
+```{r fig.height=8}
+#print(cvmodel)  
+pamr.plotcv(cvmodel)
+```
+
+*Provide a centroid plot and interpret it.*
+
+```{r}
+pamr.plotcen(cen_model, 
+             mytrain_data, 
+             threshold = cvmodel$threshold[which.min(cvmodel$error)])
+```
+
+- The plot shows only the features that play a role in classification, in this case (using set.seed(12345)) 862 features selected. This number is determined by C.V. based on the threshold that gave the least errors. The words with the longest pars at the top are the ones than can classify more correctly. Because the top words can only be seen in one of the two classes, we can see them exclusively either on the "1" side or the "0".
+
+```{r echo=TRUE, eval=FALSE}
+features = pamr.listgenes(cen_model, 
+                   mytrain_data, 
+                   threshold = cvmodel$threshold[which.min(cvmodel$error)],
+                   genenames = TRUE)
+```
+
+```{r include=FALSE}
+features = pamr.listgenes(cen_model, 
+                   mytrain_data, 
+                   threshold = cvmodel$threshold[which.min(cvmodel$error)],
+                   genenames = TRUE)
+```
+
+*How many features were selected by the method?*
+```{r}
+nrow(features)
+```
+
+
+*List the names of the 10 most contributing features*
+```{r}
+as.matrix(features[1:10,2])
+```
+
+*comment whether it is reasonable that they have strong effect on the discrimination between the conference mails and other mails?*
+
+- The NSC algorithm select every feature that have effect on the classification depending on the threshold selected by the C.V. function, in this case the threshold is relatively low thats why a lot of the features have been selected even with minimum effect. 
+
+
+*Report the test error.*
+```{r}
+#cat(paste(colnames(data)[as.numeric(features[,1])], collapse='\n'))
+# top10 <- as.matrix(colnames(data)[as.numeric(features[1:10,1])])
+# top10
+
+cen_pred <- pamr.predict(cen_model,
+                         newx = x_test,
+                         type = "class",
+                         threshold = cvmodel$threshold[which.min(cvmodel$error)]) 
+
+cen_mat   <- table(y_test, cen_pred)
+cen_rate  <- 1 - sum(diag(cen_mat)) / sum(cen_mat)
+cen_rate
+
+res1 <- list("Error Rate" = cen_rate, "Features Selected" = nrow(features))
+```
+&nbsp; 
+
+### 2.2 Comparision with Elastic Net & SVM
+```{r fig.height=10, fig.width=12, warning=FALSE}
+set.seed(12345)
+elastic_cv <- cv.glmnet(x = t(x_train), 
+                        y = y_train, 
+                        family="binomial",
+                        alpha = 0.5)
+
+# par(mfrow = c(2,1))
+# plot(elastic_cv)
+# plot(elastic_cv$glmnet.fit)
+
+elastic_pred <- predict.cv.glmnet(elastic_cv, 
+                                  newx = t(x_test), 
+                                  s = elastic_cv$lambda.min,
+                                  type = "class", 
+                                  exact = TRUE)
+
+elastic_mat  <- table(y_test, elastic_pred)
+elastic_rate <- 1 - sum(diag(elastic_mat)) / sum(elastic_mat)
+
+coefs <-as.matrix(coef(elastic_cv, elastic_cv$lambda.min))
+elastic_features <- length(names(coefs[coefs != 0,])) 
+
+res2 <- list("Error Rate" = elastic_rate, "Features Selected" = elastic_features)
+
+
+invisible(capture.output(
+  svm <- ksvm(Conference ~ ., 
+            data = train, 
+            kernel="vanilladot",
+            scaled = FALSE)))
+
+
+svm_pred <- predict(svm, newdata = test)
+
+svm_mat  <- table(y_test, elastic_pred)
+svm_rate <- 1 - sum(diag(svm_mat)) / sum(svm_mat)
+
+res3 <- list("Error Rate" = svm_rate, "Features Selected" = svm@nSV)
+
+result <- rbind("NSC" = res1, "Elastic Net" = res2, "SVM" = res3)
+knitr::kable(result)
+```
+
+*Which model would you prefer and why?* 
+
+- The NSC gave the least error but used too many variables, and could have been a higher rate if set.seed was different. The Elastic Net and SVM perform very close to each other, however Elastic Net is more interpretable and preferable to the other two.
+
+### 2.3 Benjamini-Hochberg
+&nbsp; 
+
+*Which features correspond to the rejected hypotheses?*
+```{r}
+hochberg <- function(x, y, alpha) {
+  p <- apply(x, 2, function(x_data){t.test(x_data ~ y, alternative = "two.sided")$p.value})
+
+  rank     <- as.matrix(sort(p))
+  l        <- length(p)
+  values   <- (1:l/l) * alpha
+  T_F      <- matrix(0,4702,1)
+  z        <- data.frame("P-Values" = rank,"T_F" = T_F)
+  
+  for(i in 1:4702){
+    if(rank[i] <= values[i]){
+      z[i,2] <- "Rejected"
+    }
+    else{z[i,2] <- "Accepted"}
+  }
+  lowest_p <- subset(z, T_F == "Rejected")
+  return(lowest_p)
+}
+
+lowest_p <- hochberg(x = data[,-4703], y = data[,4703], alpha=0.05)
+
+lowest_p
+```
+
+*Interpret the result.* 
+
+- The list of words selected by Benjamini-Hochberg method emphisize on lowering the false-discovery rate, meaning these words are the ones that give the least False Positive errors.
+
+
+# 2018-01-11 Exam
+
+## Assignment 1 (10p)
+
+### 1.1 
+*Perform principal component analysis using the numeric variables in the training data except of “utime” variable. Do this analysis with and without scaling of the features. How many components are necessary to explain more than 95% variation of the data in both cases? Explain why so few components are needed when scaling is not done. (2p)*
+```{r}
+data0=read.csv("Data/video.csv")
+
+data1=data0
+data1$codec=c()
+
+n=dim(data1)[1]
+set.seed(12345) 
+id=sample(1:n, floor(n*0.5)) 
+train=data1[id,] 
+test=data1[-id,] 
+
+
+data11=data1
+data11$utime=c()
+res=prcomp(data11)
+lambda=res$sdev^2
+sprintf("%2.3f",cumsum(lambda)/sum(lambda)*100)
+
+res=prcomp(scale(data11))
+lambda=res$sdev^2
+sprintf("%2.3f",cumsum(lambda)/sum(lambda)*100)
+```
+
+- 1 component in unscaled data, 9 components in the scaled data are needed to explain 95% variation. The reason in that the original data is on a very different scale variation in one feature dominates variation in the other features.
+
+### 1.2
+*Use only first 100 rows from the entire data and all numeric variables and create interaction variables up to the third order with the following code:*
+
+*data=t(apply(as.matrix(your_data_with_100rows_and_numeric_columns), 1, combn, 3, prod))*
+
+*Use the obtained matrix to perform a Nearest Shrunken Centroid (NSC) analysis in which “codec” is target and all other interaction variables are features. Obtain the cross-validation plot and interpret it in terms of bias-variance tradeoff. How does model complexity change when the threshold delta increases? (2p)*
+```{r fig.height=7}
+data11=t(apply(as.matrix(data1[1:100,1:18]), 1, combn, 3, prod))
+library(pamr)
+mydata=as.data.frame(scale(data11))
+rownames(mydata)=1:nrow(mydata)
+x=t(mydata)
+y=data0$codec[1:100]
+mydata1=list(x=x,y=as.factor(y),geneid=as.character(1:nrow(x)), genenames=rownames(x))
+model=pamr.train(mydata1,threshold=seq(0,4, 0.1))
+set.seed(12345)
+cvmodel=pamr.cv(model,mydata1)
+pamr.plotcv(cvmodel)
+```
+
+- Higher threshold leads to less complex models, the higher the complexity the lower the bias and the higher is the variance
+
+### 1.3 
+*Use the cross-validated NSC model to extract the threshold giving the optimal value of the log-likelihood (log-likelihood values are also available in the cross-validated model). Why is the multinomial log-likelihood applied for this model? (1p)*
+```{r}
+cvmodel$threshold[which.max(cvmodel$loglik)]
+```
+
+- Multinomial likelihood is used because this is a classification problem.
+
+### 1.4 
+*Use original data to create variable “class” that shows “mpeg” if variable “codec” is equal to “mpeg4”, and “other” for all other values of “codec”. Create a plot of “duration” versus “frames” where cases are colored by “class”. Do you think that the classes are easily separable by a linear decision boundary? (1p)*
+```{r}
+data2=data0
+data2$class=ifelse(data2$codec=="mpeg4", "mpeg4", "other")
+data2$codec=c()
+data2$frames=scale(data2$frames)
+data2$duration=scale(data2$duration)
+
+plot(data2$frames,data2$duration, col=as.factor(data2$class), cex=0.5)
+```
+
+- Classes seen to be rather clearly linearly separable (with exception of a few cases near to the origin).
+
+### 1.5
+*Fit a Linear Discriminant Analysis model with “class” as target and “frames” and “duration” as features to the entire dataset (scale features first). Produce the plot showing the classified data and report the training error. Explain why LDA was unable to achieve perfect (or nearly perfect) classification in this case. (2p)*
+```{r}
+library(MASS)
+m3=lda(as.factor(class)~frames+duration, data=data2)
+
+plot(data2$frames,data2$duration, col=predict(m3)$class)
+
+missclass=function(X,X1){
+  n=length(X)
+  return(1-sum(diag(table(X,X1)))/n)
+}
+
+missclass(data2$class, predict(m3, type="class")$class)
+```
+
+- The result of classification is rather bad. It is clear that covariance matrices per class are very different. In addition, class-conditional distributions do not look like multivariate normal.
+
+### 1.6
+*Fit a decision tree model with “class” as target and “frames” and “duration” as features to the entire dataset, choose an appropriate tree size by cross-validation. Report the training error. How many leaves are there in the final tree? Explain why such a complicated tree is needed to describe such a simple decision boundary. (2p)*
+```{r eval=FALSE}
+library(tree)
+m4=tree(as.factor(class)~frames+duration, data=data2)
+set.seed(12345)
+cv.res=cv.tree(m4)
+plot(cv.res$size, cv.res$dev, type="b",
+     col="red")
+
+print(m4)
+plot(m4)
+missclass(data2$class, predict(m4, type="class"))
+```
+
+- According to the cross-validation plot, the optimal tree is the largest one among the ones that were grown with default settings. The optimal tree among these has 11 leaves. 
+
+Such a complicated tree is needed because the optimal decision boundary is linear but not parallel to any of the coordinate axes. Accordingly, decision tree would need to make many splits and produce a stair-kind of decision boundary that would approximate this linear decision boundary.
+
+
+
+
+
+
+
+## Assignment 2 (10p)
+
+### 2.1
+*(3p) Implement the budget online support vector machine (SVM). Check the course slides for the pseudo-code. Feel free to use the template below. Note that you are not using all the attributes and points in the file. Run your code on the spambase.csv file for the (M, Beta) values (500,0) and (500,-0.05). Plot the error rate as a function of the number of training point.*
+```{r eval=FALSE}
+set.seed(1234567890)
+spam <- read.csv2("spambase.csv")
+ind <- sample(1:nrow(spam))
+spam <- spam[ind,c(1:48,58)]
+h <- 1
+beta <- # Your value here
+M <- # Your value here
+N <- 500 # number of training points
+gaussian_k <- function(x, h) { # Gaussian kernel
+# Your code here
+}
+SVM <- function(sv,i) { # SVM on point i with support vectors sv
+# Your code here
+# Note that the labels in spambase.csv are 0/1 and SVMs need -1/+1
+# Then, use 2*label-1 to convert from 0/1 to -1/+1
+# Do not include the labels when computing the Euclidean distance between
+# the point i and each of the support vectors. This is the distance to use
+# in the kernel function. You can use dist() to compute the Euclidean distance
+}
+errors <- 1
+errorrate <- vector(length = N)
+errorrate[1] <- 1
+sv <- c(1)
+for(i in 2:N) {
+# Your code here
+}
+plot(errorrate[seq(from=1, to=N, by=10)], ylim=c(0.2,0.4), type="o")
+length(sv)
+errorrate[N]
+```
+
+```{r}
+set.seed(1234567890)
+spam <- read.csv2("Data/spambase_exam.csv")
+ind <- sample(1:nrow(spam))
+spam <- spam[ind,c(1:48,58)]
+h <- 1
+beta <- 0
+M <- 50
+N <- 500 # number of training points
+
+gaussian_k <- function(x, h) { # It is fine if students use exp(-x**2)/h instead
+  return (exp(-(x**2)/(2*h*h)))
+}
+
+SVM <- function(sv,i) { #SVM on point i with support vectors sv
+  yi <- 0
+  for(m in 1:length(sv)) {
+    xixm <- rbind(spam[i,-49],spam[sv[m],-49]) # do not use the true label when computing the distance
+    tm <- 2 * spam[sv[m],49] - 1 # because the true labels must be -1/+1 and spambase has 0/1
+    yi <- yi + tm * gaussian_k(dist(xixm, method="euclidean"), h)
+  }
+  return (yi)
+}
+
+errors <- 1
+errorrate <- vector(length = N)
+errorrate[1] <- 1
+sv <- c(1)
+for(i in 2:N) {
+  yi <- SVM(sv,i)
+  ti <- 2 * spam[i,49] - 1
+  
+  if(ti * yi < 0) {
+    errors <- errors + 1
+  }
+  errorrate[i] <- errors/i
+  
+   cat(".") # iteration ", i, "error rate ", errorrate[i], ti * yi, "sv ", length(sv), "\n")
+   flush.console()
+  
+  if(ti * yi <= beta) {
+    sv <- c(sv, i)
+    
+    if (length(sv) > M) {
+      for(m in 1:length(sv)) { # remove the support vector that gets classified best without itself
+        sv2 <- sv[-m]
+        ym2 <- SVM(sv2,sv[m])
+        tm <- 2 * spam[sv[m],49] - 1
+
+        if(m==1) {
+          max <- tm * ym2
+          ind <- 1
+        }
+        else {
+          if(tm * ym2 > max) {
+            max <- tm * ym2
+            ind <- m
+          }
+        }
+      }
+      sv <- sv[-ind]
+      
+      # cat("removing ", ind, max, "\n")
+      # flush.console()
+    }
+  }
+}
+plot(errorrate[seq(from=1, to=N, by=10)], ylim=c(0.2,0.4), type="o")
+M
+beta
+length(sv)
+errorrate[N]
+```
+
+### 2.2
+*(2p) Analyze the results obtained. In particular,*
+*explain why (500,0) gives better results than (500,-0.05), and*
+
+- See the attached file for the code. For the setting (500, 0), the final error rate is 0.212, the
+SMV has 106 support vectors, and the error rate plot looks like the one below.
+
+*explain why the setting (50,0) is the slowest (you do not need to run your code until completion for this setting).*
+
+- For the setting (500, -0.05), the final error rate is 0.248, the SMV has 46 support vectors,
+and the error rate plot looks like the one below.
+
+- The reason why the first setting gives better results is that every misclassified point is added as support vector, whereas in the second setting only seriously misclassified points are added, i.e. only those that are beta units beyond the decision boundary. This can also be seen by looking at the number of support vectors at the end of the two runs. Adding a misclassified
+point as support vector implies correcting the SVM so as to make that point (and other similar points) less likely to be misclassified in the future. 
+
+- Finally, the setting (50,0) is the slowest because it is the one that removes more vectors.
+Removing is an expensive operation as one has to evaluate the result of removing each vector,
+and there are 50 of them.
+
+
+### 2.3
+*(3p) Train a neural network (NN) to learn the trigonometric sine function. To do so, sample 50 points uniformly at random in the interval [0, 10]. Apply the sine function to each point. The resulting pairs are the data available to you. Use 25 of the 50 points for training and the rest for validation.*
+
+*The validation set is used for early stop of the gradient descent. That is, you should use the validation set to detect when to stop the gradient descent and so avoid overfitting. Stop the gradient descent when the partial derivatives of the error function are below a given threshold value. Check the argument threshold in the documentation.*
+
+*Use a neural network with a single hidden layer of 10 units. Use the default values for the arguments not mentioned here. Choose the most appropriate value for the threshold. Motivate your choice. Provide the final neural network learned with the chosen threshold.*
+```{r}
+# JMP
+
+library(neuralnet)
+
+# two layers
+
+set.seed(1234567890)
+
+Var <- runif(50, 0, 10)
+trva <- data.frame(Var, Sin=sin(Var))
+tr <- trva[1:25,] # Training
+va <- trva[26:50,] # Validation
+
+# plot(trva)
+# plot(tr)
+# plot(va)
+
+restr <- vector(length = 10)
+resva <- vector(length = 10)
+winit <- runif(22, -1, 1) # Random initializaiton of the weights in the interval [-1, 1]
+for(i in 1:10) {
+  nn <- neuralnet(formula = Sin ~ Var, data = tr, hidden = c(3,3), startweights = winit,
+                  threshold = i/1000, lifesign = "full")
+  
+  # nn$result.matrix
+  
+  aux <- predict(nn, tr) # Compute predictions for the trainig set and their squared error
+  restr[i] <- sum((tr[,2] - aux)**2)/2
+  
+  aux <- predict(nn, va) # The same for the validation set
+  resva[i] <- sum((va[,2] - aux)**2)/2
+}
+plot(restr, type = "o")
+plot(resva, type = "o")
+restr
+resva
+
+# one layer
+
+set.seed(1234567890)
+
+Var <- runif(50, 0, 10)
+trva <- data.frame(Var, Sin=sin(Var))
+tr <- trva[1:25,] # Training
+va <- trva[26:50,] # Validation
+
+# plot(trva)
+# plot(tr)
+# plot(va)
+
+restr <- vector(length = 10)
+resva <- vector(length = 10)
+winit <- runif(41, -1, 1) # Random initializaiton of the weights in the interval [-1, 1]
+for(i in 1:10) {
+  nn <- neuralnet(formula = Sin ~ Var, data = tr, hidden = c(10), startweights = winit,
+                  threshold = i/1000, lifesign = "full")
+  
+  # nn$result.matrix
+  
+  aux <- predict(nn, tr) # Compute predictions for the trainig set and their squared error
+  restr[i] <- sum((tr[,2] - aux)**2)/2
+  
+  aux <- predict(nn, va) # The same for the validation set
+  resva[i] <- sum((va[,2] - aux)**2)/2
+}
+plot(restr, type = "o")
+plot(resva, type = "o")
+restr
+resva
+```
+
+### 1.4
+*(1p) Estimate the generalization error of the NN selected above (use any method of your choice).*
+```{r}
+# estimate generalization error for the best run above (one layer with threshold 4/1000)
+
+Var <- runif(50, 0, 10)
+te <- data.frame(Var, Sin=sin(Var))
+
+winit <- runif(31, -1, 1)
+nn <- neuralnet(formula = Sin ~ Var, data = trva, hidden = 10, startweights = winit,
+                     threshold = 4/1000, lifesign = "full")
+sum((te[,2] - predict(nn, te))**2)/2
+```
+
+### 1.5
+*(1p) In the light of the results above, would you say that the more layers the better ? Motivate your answer.*
+
+- See the attached file for the code. The best model is that with one layer of 10 neurons and threshold for early stopping equal to 4/1000. The generalization error is estimated by sampling additional test data, since we have access to the true function. Therefore, we conclude that more layers is not always better.
+
+
+\newpage 
+
+# Highlights from Lectures
+
+### Cross-Validation
+```{r eval=FALSE}
+data=read.csv("machine.csv", header=F)
+library(cvTools)
+fit1=lm(V9~V3+V4+V5+V6+V7+V8, data=data)
+fit2=lm(V9~V3+V4+V5+V6+V7, data=data)
+fit3=lm(V9~V3+V4+V5+V6, data=data)
+f1=cvFit(fit1, y=data$V9, data=data,K=10,
+foldType="consecutive")
+f2=cvFit(fit2, y=data$V9, data=data,K=10,
+foldType="consecutive")
+f3=cvFit(fit3, y=data$V9, data=data,K=10,
+foldType="consecutive")
+res=cvSelect(f1,f2,f3)
+plot(res)
+```
+
+- Likelihood shows how much the chosen parameter value is proper for a specific model and the given data.
+
+### Confidence Interval
+```{r eval=FALSE}
+fitted <- predict(fit1, interval =
+"confidence")
+# plot the data and the fitted line
+attach(mydata)
+plot(Year, Price)
+lines(Year, fitted[, "fit"])
+# plot the confidence bands
+lines(Year, fitted[, "lwr"], lty = "dotted",
+col="blue")
+lines(Year, fitted[, "upr"], lty = "dotted",
+col="blue")
+detach(mydata)
+```
+
+
+## Generative vs Discriminant Models
+
+- Generative can be used to generate new data
+
+- Generative normally easier to fit (check Logistic vs K-NN)
+
+- Generative: each class estimated separately -> do not need to retrain whena new class added
+
+- Discriminative models: can replace X with theta(X)(preprocessing), method will still work
+
+- Not generative, distribution will change
+
+- Generative: often make too strong assumptions about p(X|Y,w) -> bad performance
+
+- Generative: main assumption: x is now random as well as y
+
+
+## LDA vs Logistic Regression
+- Generative classifiers are easier to fit, discriminative involve numeric optimization.
+
+- LDA and Logistic have same model form but are fit differently.
+
+- LDA has stronger assumptions than Logistic, some other generative classifiers lead also to logistic expression.
+
+- New classin the data?
+- Logistic: fit model again
+- LDA: estimate new parameters from the new data
+
+- Logistic and LDA: complex data fits badly unless interactions are included
+
+- LDA (and other generative classifiers) handle missing data easier.
+
+- Standardization and generated inputs:
+- Not a problem for Logistic
+- May affectthe performance of the LDA in a complex way
+
+- Outliers affect covariance -> LDA is not robust to gross outliers
+
+- LDA is often a good classification method even if the assumption of normality and common covariance matrix are not satisfied.
+
+# Naive Bayes
+![Alt text](Data/Naive Bayes 1.jpg)
+![Alt text](Data/Naive Bayes 2.jpg)
+![Alt text](Data/Naive Bayes 3.jpg)
+![Alt text](Data/Naive Bayes 4.jpg)
+![Alt text](Data/Naive Bayes 5.jpg)
+![Alt text](Data/Naive Bayes 6.jpg)
+
+
+# Trees
+![Alt text](Data/trees 1.jpg)
+![Alt text](Data/trees 2.jpg)
+![Alt text](Data/trees 3.jpg)
+![Alt text](Data/trees 4.jpg)
+
+# GLM
+![Alt text](Data/GLM 1.jpg)
+![Alt text](Data/GLM 2.jpg)
+![Alt text](Data/GLM 3.jpg)
+![Alt text](Data/GLM 4.jpg)
+![Alt text](Data/GLM 5.jpg)
+![Alt text](Data/GLM 6.jpg)
+![Alt text](Data/GLM 7.jpg)
+![Alt text](Data/GLM 8.jpg)
+![Alt text](Data/GLM 9.jpg)
+![Alt text](Data/GLM 10.jpg)
+![Alt text](Data/GLM 11.jpg)
+![Alt text](Data/GLM 12.jpg)
+![Alt text](Data/GLM 13.jpg)
+![Alt text](Data/GLM 14.jpg)
+
+# PCA
+![Alt text](Data/PCA 1.jpg)
+![Alt text](Data/PCA 2.jpg)
+![Alt text](Data/PCA 3.jpg)
+![Alt text](Data/PCA 4.jpg)
+![Alt text](Data/PCA 5.jpg)
+![Alt text](Data/PCA 6.jpg)
+![Alt text](Data/PCA 7.jpg)
+![Alt text](Data/PCA 8.jpg)
+
+# Kernels
+![Alt text](Data/Kernels 1.jpg)
+![Alt text](Data/Kernels 2.jpg)
+![Alt text](Data/Kernels 3.jpg)
+
+![Alt text](Data/Kernels 5.jpg)
+![Alt text](Data/Kernels 6.jpg)
+![Alt text](Data/Kernels 7.jpg)
+![Alt text](Data/Kernels 8.jpg)
+![Alt text](Data/Kernels 9.jpg)
+![Alt text](Data/Kernels 10.jpg)
+![Alt text](Data/Kernels 11.jpg)
+![Alt text](Data/Kernels 12.jpg)
+![Alt text](Data/Kernels 13.jpg)
+
+
+# SVM
+![Alt text](Data/SVM 1.jpg)
+![Alt text](Data/SVM 2.jpg)
+![Alt text](Data/SVM 3.jpg)
+![Alt text](Data/SVM 4.jpg)
+![Alt text](Data/SVM 5.jpg)
+![Alt text](Data/SVM 6.jpg)
+![Alt text](Data/SVM 7.jpg)
+![Alt text](Data/SVM 8.jpg)
+![Alt text](Data/SVM 9.jpg)
+![Alt text](Data/SVM 10.jpg)
+![Alt text](Data/SVM 11.jpg)
+![Alt text](Data/SVM 12.jpg)
+![Alt text](Data/SVM 13.jpg)
+![Alt text](Data/SVM 14.jpg)
+
+### Summary
+- Kernel trick: It allows to work in the feature space without constructing it.
+- L Quadratic objective function: It allows to obtain the global optimum for a given kernel and C/epsilon (which are obtained by cross-validation).
+- L Sparse model: Only the support vectors are needed for classication/regression (compare with kernel models).
+
+
+# Neural Networks
+![Alt text](Data/NN 1.jpg)
+![Alt text](Data/NN 2.jpg)
+![Alt text](Data/NN 3.jpg)
+
+
+
+![Alt text](Data/NN 12.jpg)
+![Alt text](Data/NN 13.jpg)
+
+
+# Ensemble Methods
+![Alt text](Data/Ensemble 1.jpg)
+![Alt text](Data/Ensemble 2.jpg)
+![Alt text](Data/Ensemble 3.jpg)
+![Alt text](Data/Ensemble 4.jpg)
+![Alt text](Data/Ensemble 6.jpg)
+![Alt text](Data/Ensemble 7.jpg)
+![Alt text](Data/Ensemble 8.jpg)
+![Alt text](Data/Ensemble 9.jpg)
+![Alt text](Data/Ensemble 10.jpg)
+![Alt text](Data/Ensemble 11.jpg)
+![Alt text](Data/Ensemble 12.jpg)
+![Alt text](Data/Ensemble 13.jpg)
+
+# Mixture Models
+![Alt text](Data/Mixture 1.jpg)
+![Alt text](Data/Mixture 2.jpg)
+![Alt text](Data/Mixture 3.jpg)
+![Alt text](Data/Mixture 4.jpg)
+![Alt text](Data/Mixture 5.jpg)
+![Alt text](Data/Mixture 6.jpg)
+![Alt text](Data/Mixture 7.jpg)
+![Alt text](Data/Mixture 9.jpg)
+![Alt text](Data/Mixture 10.jpg)

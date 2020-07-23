@@ -1,0 +1,214 @@
+---
+title: "Exam Solution"
+author: "Ahmed Alhasan"
+date: "3/19/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align = "center", out.width = "80%", warning = FALSE)
+```
+
+**I solemnly swear that I wrote the exam honestly, I did not use any unpermitted aids, nor did I communicate with anybody except of the course examiners.**
+
+**Ahmed Alhasan**
+
+# Assignment 1
+```{r}
+RNGversion("3.5.2")
+## Assignment 1
+
+temp <- read.csv2("Dailytemperature.csv")
+phis <- matrix(0,1792,202)
+temp <- cbind(temp,phis)
+
+
+i <- -50
+for(j in 3:103){
+  for(obs in 1:1792){
+    temp[obs,j]     <- sin(0.5^i * temp$Day[obs])
+    temp[obs,j+101] <- cos(0.5^i * temp$Day[obs])
+  }
+  i <- i + 1
+}
+
+hist(temp$Temperature, breaks = 50)
+```
+- From the histogram we can see Temperature is fairly follow a normal distribution
+
+```{r}
+library(glmnet)
+lasso <- glmnet(x = as.matrix(temp[,-c(1,2)]),
+                y = as.matrix(temp$Temperature),
+                alpha = 1,
+                family = "gaussian")
+
+plot(lasso, xvar="lambda", label=TRUE)
+```
+- By increasing the penalty factor we eliminate the least correlated predictors, there is sharp decrease in the number of predictors once we start increasing the penalty factor, until it reaches 2 predictors when loglambda = 0
+
+```{r}
+set.seed(12345)
+lasso_cv <- cv.glmnet(x = as.matrix(temp[,-c(1,2)]),
+                      y = as.matrix(temp$Temperature),
+                      alpha=1,
+                      family="gaussian",
+                      lambda = 0:100 * 0.001)
+
+plot(lasso_cv)
+
+c("Minimum Lambda" = lasso_cv$lambda.min)
+c("1se Lambda" = lasso_cv$lambda.1se)
+
+```
+- The obtimal lambda (lambda.min) is statistical significant at alpha = 1-1sd than log-lambda = -4 since we can see the the two dotted lines on the plot represent lambda.min and lambda at 1 standard deviation.
+
+```{r}
+lasso_opt <- glmnet(x = as.matrix(temp[,-c(1,2)]),
+                  y = as.matrix(temp$Temperature),
+                  alpha = 1,
+                  family = "gaussian",
+                  lambda = lasso_cv$lambda.min)
+c("Number of non-zero Features" = lasso_opt$df)
+
+coef(lasso_opt, s = lasso_cv$lambda.min)
+pred <- predict(lasso_opt, newx = as.matrix(temp[,-c(1,2)]))
+
+mydata <- data.frame(x = temp$Day, y = temp$Temperature, yhat = pred)
+
+plot(temp$Temperature, type = "b", col = "red")
+points(pred, type = "b", col = "blue")
+```
+
+- The predicted values give a fairly good approximation to the original temperature 
+
+# Assignment 2
+1)
+```{r}
+data(mtcars)
+cars <- mtcars[,c(1,4)]
+Var1  <- var(cars)
+
+comps <- eigen(Var1)$vectors
+colnames(comps) <- c("PC1", "PC2")
+
+c("First Component" = comps[,1])
+```
+
+```{r}
+plot(cars, main = "Original Data")
+```
+
+- This plot is for the original data not for the reduced data, however the new direction should be reasonable because PCA rorate the data to along the principle components that explain the most variance.
+
+
+
+2)
+```{r}
+reduced <- cbind(cars,am = mtcars$am)
+
+library(ggplot2)
+ggplot(reduced, aes(x = mpg, y = hp))+
+  geom_point(aes(color = as.factor(am)),
+             size = 1.5,
+             alpha = 0.8 )+
+  scale_color_manual(values = c('#00CCFF', '#FF3366'))+
+  labs(title = "Cars",
+       x = "mpg",
+       y = "hp",
+       colour = "am")+
+  theme_minimal()
+
+library(MASS)
+lda_model <- lda(am ~ mpg + hp, data = reduced)
+lda_pred  <- predict(lda_model, data = reduced)
+
+con_mat   <- table("Actuals" = reduced$am, "Predictions" = lda_pred$class)
+miss_rate <- 1 - sum(diag(con_mat)) / sum(con_mat)
+con_mat
+miss_rate
+
+ggplot(reduced, aes(x = mpg, y = hp))+
+  geom_point(aes(color = lda_pred$class),
+             size = 1.5,
+             alpha = 0.8 )+
+  scale_color_manual(values = c('#00CCFF', '#FF3366'))+
+  labs(title = "Cars",
+       x = "mpg",
+       y = "hp",
+       colour = "am")+
+  theme_minimal()
+```
+- Although LDA gave fairly good prediction, the data used violates the lda assumptions about being generated from conditional univariate normal distribution and from equal covariance matrices, which we can see in the plot are violated to some degree, however given that LDA is a robust classification method even if the assumption of normality and common covariance matrix are not satisfied it can in some cases give good prediction.
+
+```{r}
+library(mvtnorm)
+m1 <- mean(cars$mpg)
+m2 <- mean(cars$hp)
+n  <- dim(cars)[1]
+set.seed(12345)
+newdata <- rmvnorm(n, mean = c(m1,m2), sigma = Var1)
+plot(newdata)
+```
+
+- The simulated data does not look like the original data since we assumed normality for the multivariate distribution that does not exist in the original data
+
+
+
+# Assignment 3
+## Ensemble Methods
+- Let  h(x) denote the true regression. Then, $f^b(x) = h(x) + \epsilon^b(x)$ where b is a boot strab sample
+
+- The Mean Squared  Error of $f^b(x)$ can be expressed as:
+
+$$E_x \bigg[ (f^b(x) - h(x))^2 \bigg] = E_x \bigg[ \epsilon^b(x)^2 \bigg]$$
+- Therefore we can have  Mean Squared  Error of $f_{bag}(x)$ can be expressed as:
+$$E_x \bigg[ (\frac{1}{B} \sum_b f^b(x) - h(x))^2 \bigg] = E_x \bigg[\frac{1}{B} \sum_b \epsilon^b(x)^2 \bigg]$$
+- When the individual errors have zero mean and are uncorrelated, $E_x[ \epsilon^b(x)] = 0$ and $E_x[ \epsilon^b(x) \epsilon^{b^\prime}(x)] = 0$ we get 
+
+$$E_x \bigg[ (\frac{1}{B} \sum_b f^b(x) - h(x))^2 \bigg] = \frac{1}{B} \bigg(\frac{1}{B} \sum_b E_x[ \epsilon^b(x)^2] \bigg)$$
+```{r}
+ms <- rep(0,10)
+s  <- matrix(0,10,10)
+for(r in 1:10){
+  for(c in 1:10){
+    if(r==c){s[r,c] <- 1}
+    else{
+      s[r,c] <- runif(1,1,2)
+    }
+    s[c,r] <- s[r,c]
+  }
+}
+B <- 100
+b <- rmvnorm(B, mean = ms, sigma = s)
+```
+
+
+## Neural Networks
+```{r}
+library(neuralnet)
+set.seed(1234567890)
+Var <- runif(50, 0, 10)
+tr  <- data.frame(Var, Sin=sin(Var))
+winit <- runif(31, -1, 1)
+nn <- neuralnet(formula = Var ~ Sin, data = tr, hidden = 10, startweights = winit, threshold = 0.02, lifesign = "full")
+plot(tr[,1],predict(nn,tr), col="blue", cex=3)
+points(tr, col = "red", cex=3)
+```
+
+- In the second case because the variance does not resemble the pattern we get when we predict the sin it just predict chaitic pattern but with the new predicted variance.
+
+
+
+
+
+
+
+
+
+
+# Appendix
+```{r ref.label=knitr::all_labels(), echo = T, eval = F}
+
+```
+
