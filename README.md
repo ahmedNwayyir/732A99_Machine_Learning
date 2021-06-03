@@ -4,8 +4,6 @@ Linköping University, 1st semester 2019
 
 ## Intended learning outcomes
 
-After completion of the course the student should at an advanced level be able to:
-
 - use relevant concepts and methods from machine learning in order to formulate, structure and solve practical problems that involve large or complex data,
 - make an inference for the parameter values for commonly used machine learning models,
 - use machine learning models for prediction and decision making,
